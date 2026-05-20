@@ -49,8 +49,8 @@ class ResGenerator(DefaultCanvas):
 
     def _addRes( self, x, y, height, unit_res, draw_boundary=True):
 
-        y_length = self.finsPerUnitCell * self.pdk['Fin']['Pitch'] * height
-        assert y_length != 0, (self.finsPerUnitCell, self.pdk['Fin']['Pitch'], height)
+        y_length = self.finsPerUnitCell * self.pdk['Active']['Pitch'] * height
+        assert y_length != 0, (self.finsPerUnitCell, self.pdk['Active']['Pitch'], height)
         # SMB ??? Hard coded value
         res_per_length = 67
         x_number = max( 1, int(round(((1000*unit_res)/(res_per_length*y_length)))))

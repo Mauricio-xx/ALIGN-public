@@ -2,7 +2,9 @@
     "_comment": "IHP SG13G2 130nm BiCMOS PDK abstraction for ALIGN. Phase A: LV CMOS only (M1-M5, RVT). TM1/TM2/Thickox added in Phase B. GDS layer numbers extracted from $IHP_PDK_ROOT/ihp-sg13g2/libs.tech/klayout/tech/sg13g2.lyp and sg13g2.map.",
     "ScaleFactor": 1,
     "design_info": {
-        "vt_type": ["RVT"],
+        "vt_type": [
+            "RVT"
+        ],
         "top_signal_routing_layer": "M5",
         "bottom_signal_routing_layer": "M2",
         "top_power_grid_layer": "M5",
@@ -228,12 +230,12 @@
                 "M2",
                 "M3"
             ],
-            "SpaceX": 280,
-            "SpaceY": 280,
-            "WidthX": 260,
-            "WidthY": 260,
-            "VencA_L": 60,
-            "VencA_H": 60,
+            "SpaceX": 180,
+            "SpaceY": 180,
+            "WidthX": 130,
+            "WidthY": 130,
+            "VencA_L": 0,
+            "VencA_H": 0,
             "VencP_L": 0,
             "VencP_H": 0,
             "R": {
@@ -285,12 +287,12 @@
                 "M3",
                 "M4"
             ],
-            "SpaceX": 280,
-            "SpaceY": 280,
-            "WidthX": 260,
-            "WidthY": 260,
-            "VencA_L": 60,
-            "VencA_H": 60,
+            "SpaceX": 180,
+            "SpaceY": 180,
+            "WidthX": 130,
+            "WidthY": 130,
+            "VencA_L": 0,
+            "VencA_H": 0,
             "VencP_L": 0,
             "VencP_H": 0,
             "R": {
@@ -342,12 +344,12 @@
                 "M4",
                 "M5"
             ],
-            "SpaceX": 280,
-            "SpaceY": 280,
-            "WidthX": 260,
-            "WidthY": 260,
-            "VencA_L": 60,
-            "VencA_H": 60,
+            "SpaceX": 180,
+            "SpaceY": 180,
+            "WidthX": 130,
+            "WidthY": 130,
+            "VencA_L": 0,
+            "VencA_H": 0,
             "VencP_L": 0,
             "VencP_H": 0,
             "R": {
