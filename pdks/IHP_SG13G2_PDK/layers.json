@@ -1,0 +1,450 @@
+{
+    "_comment": "IHP SG13G2 130nm BiCMOS PDK abstraction for ALIGN. Phase A: LV CMOS only (M1-M5, RVT). TM1/TM2/Thickox added in Phase B. GDS layer numbers extracted from $IHP_PDK_ROOT/ihp-sg13g2/libs.tech/klayout/tech/sg13g2.lyp and sg13g2.map.",
+    "ScaleFactor": 1,
+    "design_info": {
+        "vt_type": ["RVT"],
+        "top_signal_routing_layer": "M5",
+        "bottom_signal_routing_layer": "M2",
+        "top_power_grid_layer": "M5",
+        "bottom_power_grid_layer": "M4",
+        "top_power_routing_layer": "M5",
+        "bottom_power_routing_layer": "M2",
+        "top_clock_routing_layer": "M5",
+        "bottom_clock_routing_layer": "M2",
+        "top_port_routing_layer": "M5",
+        "bottom_port_routing_layer": "M2",
+        "power_rail_frequency": 2,
+        "Hspace": 0,
+        "Vspace": 0,
+        "active_pitch": 280,
+        "unit_size_mos": 12,
+        "max_size_mos": 48,
+        "unit_size_cap": 12,
+        "max_size_cap": 1000,
+        "unit_height_res": 600
+    },
+    "Abstraction": [
+        {
+            "Layer": "Poly",
+            "GdsLayerNo": 5,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "Direction": "V",
+            "Pitch": 480,
+            "Width": 130,
+            "MinL": 600,
+            "MaxL": null,
+            "EndToEnd": 220,
+            "Offset": 240,
+            "UnitC": {
+                "L_3Sigma": 0.16,
+                "Mean": 0.2,
+                "U_3Sigma": 0.24
+            },
+            "UnitCC": {
+                "L_3Sigma": 0.08,
+                "Mean": 0.1,
+                "U_3Sigma": 0.12
+            },
+            "UnitR": {
+                "L_3Sigma": 80,
+                "Mean": 100,
+                "U_3Sigma": 120
+            }
+        },
+        {
+            "Layer": "Active",
+            "GdsLayerNo": 1,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "Direction": "H",
+            "Pitch": 280,
+            "Width": 280,
+            "MinL": 280,
+            "MaxL": null,
+            "EndToEnd": null,
+            "Offset": 0,
+            "active_enclosure": 70,
+            "activebWidth": 280,
+            "activebWidth_H": 280,
+            "activePolyExTracks": 2
+        },
+        {
+            "Layer": "M1",
+            "GdsLayerNo": 8,
+            "GdsDatatype": {
+                "Draw": 0,
+                "Pin": 2,
+                "Label": 25,
+                "Blockage": 4
+            },
+            "Direction": "V",
+            "Color": [],
+            "Pitch": 480,
+            "Width": 160,
+            "MinL": 200,
+            "MaxL": null,
+            "EndToEnd": 180,
+            "Offset": 0,
+            "UnitC": {
+                "L_3Sigma": 0.16,
+                "Mean": 0.2,
+                "U_3Sigma": 0.24
+            },
+            "UnitCC": {
+                "L_3Sigma": 0.08,
+                "Mean": 0.1,
+                "U_3Sigma": 0.12
+            },
+            "UnitR": {
+                "L_3Sigma": 80,
+                "Mean": 100,
+                "U_3Sigma": 120
+            }
+        },
+        {
+            "Layer": "V0",
+            "GdsLayerNo": 6,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "Stack": [
+                null,
+                "M1"
+            ],
+            "SpaceX": 180,
+            "SpaceY": 180,
+            "WidthX": 160,
+            "WidthY": 160,
+            "VencA_L": 50,
+            "VencA_H": 50,
+            "VencP_L": 0,
+            "VencP_H": 0,
+            "R": {
+                "L_3Sigma": 16,
+                "Mean": 20,
+                "U_3Sigma": 24
+            }
+        },
+        {
+            "Layer": "M2",
+            "GdsLayerNo": 10,
+            "GdsDatatype": {
+                "Draw": 0,
+                "Pin": 2,
+                "Label": 25,
+                "Blockage": 4
+            },
+            "Direction": "H",
+            "Color": [],
+            "Pitch": 560,
+            "Width": 280,
+            "MinL": 500,
+            "MaxL": null,
+            "EndToEnd": 280,
+            "Offset": 0,
+            "UnitC": {
+                "L_3Sigma": 0.16,
+                "Mean": 0.2,
+                "U_3Sigma": 0.24
+            },
+            "UnitCC": {
+                "L_3Sigma": 0.08,
+                "Mean": 0.1,
+                "U_3Sigma": 0.12
+            },
+            "UnitR": {
+                "L_3Sigma": 80,
+                "Mean": 100,
+                "U_3Sigma": 120
+            }
+        },
+        {
+            "Layer": "V1",
+            "GdsLayerNo": 19,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "Stack": [
+                "M1",
+                "M2"
+            ],
+            "SpaceX": 220,
+            "SpaceY": 220,
+            "WidthX": 190,
+            "WidthY": 190,
+            "VencA_L": 50,
+            "VencA_H": 50,
+            "VencP_L": 0,
+            "VencP_H": 0,
+            "R": {
+                "L_3Sigma": 16,
+                "Mean": 20,
+                "U_3Sigma": 24
+            }
+        },
+        {
+            "Layer": "M3",
+            "GdsLayerNo": 30,
+            "GdsDatatype": {
+                "Draw": 0,
+                "Pin": 2,
+                "Label": 25,
+                "Blockage": 4
+            },
+            "Direction": "V",
+            "Color": [],
+            "Pitch": 560,
+            "Width": 280,
+            "MinL": 500,
+            "MaxL": null,
+            "EndToEnd": 280,
+            "Offset": 0,
+            "UnitC": {
+                "L_3Sigma": 0.16,
+                "Mean": 0.2,
+                "U_3Sigma": 0.24
+            },
+            "UnitCC": {
+                "L_3Sigma": 0.08,
+                "Mean": 0.1,
+                "U_3Sigma": 0.12
+            },
+            "UnitR": {
+                "L_3Sigma": 80,
+                "Mean": 100,
+                "U_3Sigma": 120
+            }
+        },
+        {
+            "Layer": "V2",
+            "GdsLayerNo": 29,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "Stack": [
+                "M2",
+                "M3"
+            ],
+            "SpaceX": 280,
+            "SpaceY": 280,
+            "WidthX": 260,
+            "WidthY": 260,
+            "VencA_L": 60,
+            "VencA_H": 60,
+            "VencP_L": 0,
+            "VencP_H": 0,
+            "R": {
+                "L_3Sigma": 16,
+                "Mean": 20,
+                "U_3Sigma": 24
+            }
+        },
+        {
+            "Layer": "M4",
+            "GdsLayerNo": 50,
+            "GdsDatatype": {
+                "Draw": 0,
+                "Pin": 2,
+                "Label": 25,
+                "Blockage": 4
+            },
+            "Direction": "H",
+            "Color": [],
+            "Pitch": 560,
+            "Width": 280,
+            "MinL": 500,
+            "MaxL": null,
+            "EndToEnd": 280,
+            "Offset": 0,
+            "UnitC": {
+                "L_3Sigma": 0.16,
+                "Mean": 0.2,
+                "U_3Sigma": 0.24
+            },
+            "UnitCC": {
+                "L_3Sigma": 0.08,
+                "Mean": 0.1,
+                "U_3Sigma": 0.12
+            },
+            "UnitR": {
+                "L_3Sigma": 80,
+                "Mean": 100,
+                "U_3Sigma": 120
+            }
+        },
+        {
+            "Layer": "V3",
+            "GdsLayerNo": 49,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "Stack": [
+                "M3",
+                "M4"
+            ],
+            "SpaceX": 280,
+            "SpaceY": 280,
+            "WidthX": 260,
+            "WidthY": 260,
+            "VencA_L": 60,
+            "VencA_H": 60,
+            "VencP_L": 0,
+            "VencP_H": 0,
+            "R": {
+                "L_3Sigma": 16,
+                "Mean": 20,
+                "U_3Sigma": 24
+            }
+        },
+        {
+            "Layer": "M5",
+            "GdsLayerNo": 67,
+            "GdsDatatype": {
+                "Draw": 0,
+                "Pin": 2,
+                "Label": 25,
+                "Blockage": 4
+            },
+            "Direction": "V",
+            "Color": [],
+            "Pitch": 640,
+            "Width": 320,
+            "MinL": 500,
+            "MaxL": null,
+            "EndToEnd": 320,
+            "Offset": 0,
+            "UnitC": {
+                "L_3Sigma": 0.16,
+                "Mean": 0.2,
+                "U_3Sigma": 0.24
+            },
+            "UnitCC": {
+                "L_3Sigma": 0.08,
+                "Mean": 0.1,
+                "U_3Sigma": 0.12
+            },
+            "UnitR": {
+                "L_3Sigma": 80,
+                "Mean": 100,
+                "U_3Sigma": 120
+            }
+        },
+        {
+            "Layer": "V4",
+            "GdsLayerNo": 66,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "Stack": [
+                "M4",
+                "M5"
+            ],
+            "SpaceX": 280,
+            "SpaceY": 280,
+            "WidthX": 260,
+            "WidthY": 260,
+            "VencA_L": 60,
+            "VencA_H": 60,
+            "VencP_L": 0,
+            "VencP_H": 0,
+            "R": {
+                "L_3Sigma": 16,
+                "Mean": 20,
+                "U_3Sigma": 24
+            }
+        },
+        {
+            "Layer": "Nwell",
+            "GdsLayerNo": 31,
+            "GdsDatatype": {
+                "Draw": 0
+            }
+        },
+        {
+            "Layer": "Nselect",
+            "GdsLayerNo": 7,
+            "GdsDatatype": {
+                "Draw": 0
+            }
+        },
+        {
+            "Layer": "Pselect",
+            "GdsLayerNo": 14,
+            "GdsDatatype": {
+                "Draw": 0
+            }
+        },
+        {
+            "Layer": "Rvt",
+            "GdsLayerNo": 200,
+            "GdsDatatype": {
+                "Draw": 0
+            }
+        },
+        {
+            "Layer": "Pb",
+            "GdsLayerNo": 99,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "pbWidth": 280,
+            "pbWidth_H": 280
+        },
+        {
+            "Layer": "Pc",
+            "GdsLayerNo": 6,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "PcWidth": 160,
+            "PcExt": 0
+        },
+        {
+            "Layer": "Bbox",
+            "GdsLayerNo": 100,
+            "GdsDatatype": {
+                "Draw": 5
+            }
+        },
+        {
+            "Layer": "Boundary",
+            "GdsLayerNo": 101,
+            "GdsDatatype": {
+                "Draw": 0
+            }
+        },
+        {
+            "Layer": "Rboundary",
+            "GdsLayerNo": 102,
+            "GdsDatatype": {
+                "Draw": 0
+            }
+        },
+        {
+            "Layer": "Cboundary",
+            "GdsLayerNo": 103,
+            "GdsDatatype": {
+                "Draw": 0
+            }
+        },
+        {
+            "Layer": "Outline",
+            "GdsLayerNo": 104,
+            "GdsDatatype": {
+                "Draw": 0
+            }
+        },
+        {
+            "Layer": "Cap",
+            "m1Pitch": 480,
+            "m2Pitch": 560,
+            "m3Pitch": 560,
+            "m1Width": 160,
+            "m2Width": 280,
+            "m3Width": 280
+        }
+    ]
+}
