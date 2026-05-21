@@ -109,6 +109,14 @@ def add_primitive(primitives, block_name, block_args, generator_constraint):
             primitives[block_name]['abstract_template_name'] = block_name
             primitives[block_name]['concrete_template_name'] = block_name
 
+BLACKBOX_MODELS = frozenset({
+    'cap_cmim', 'rfcmim',
+    'rsil', 'rppd', 'rhigh',
+    'npn13g2', 'npn13g2l', 'npn13g2v', 'pnpmpa',
+    'inductors', 'inductor2', 'inductor3',
+})
+
+
 def gen_param(subckt, primitives, pdk_dir):
 
     generator_constraint = None
@@ -128,6 +136,25 @@ def gen_param(subckt, primitives, pdk_dir):
     with open(layers_json, "rt") as fp:
         pdk_data = json.load(fp)
     design_config = pdk_data["design_info"]
+
+    # IHP-specific devices: dispatch via ALIGN's black_box mechanism.
+    # The PyCell-derived GDS is expected to live in --blackbox_dir under
+    # the file name "<block_name>.gds" with PLUS/MINUS (or device pins)
+    # already labeled. See pdks/IHP_SG13G2_PDK/gen_blackbox/.
+    model_lc = subckt.elements[0].model.lower() if subckt.elements else ''
+    if model_lc in BLACKBOX_MODELS:
+        pin_names = [str(p).upper() for p in subckt.pins]
+        primitives[block_name] = {
+            'primitive': 'black_box',
+            'abstract_template_name': block_name,
+            'concrete_template_name': block_name,
+            'parameters': pin_names,
+        }
+        logger.debug(
+            f"Routing {block_name} (model={model_lc}) to black_box; "
+            f"expect blackbox_dir/{block_name}.gds with ports {pin_names}"
+        )
+        return True
 
     if len(subckt.elements) == 1:
         values = subckt.elements[0].parameters
