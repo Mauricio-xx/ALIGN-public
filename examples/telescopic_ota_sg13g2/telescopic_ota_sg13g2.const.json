@@ -1,4 +1,5 @@
 [
         {"constraint": "PowerPorts", "ports": ["VDD"]},
-        {"constraint": "GroundPorts", "ports": ["0"]}
+        {"constraint": "GroundPorts", "ports": ["0"]},
+        {"constraint": "AspectRatio", "ratio_low": 0.5, "ratio_high": 4.0}
 ]
