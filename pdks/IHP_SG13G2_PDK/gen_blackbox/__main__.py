@@ -20,11 +20,13 @@ from pathlib import Path
 from .mim import gen_cmim
 from .polyres import gen_rsil, gen_rppd, gen_rhigh
 from .bjt import gen_npn13g2, gen_npn13g2l, gen_npn13g2v
+from .inductor import gen_inductor2, gen_inductor3, default_dmin, default_nr
 from .klayout_runner import klayout_available
 
 
 _PASSIVE = {"cmim", "rsil", "rppd", "rhigh"}
 _BJT = {"npn13g2", "npn13g2l", "npn13g2v"}
+_IND = {"inductor2", "inductor3"}
 
 
 def _parse_si(text: str) -> float:
@@ -41,15 +43,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--device",
         required=True,
-        choices=sorted(_PASSIVE | _BJT),
+        choices=sorted(_PASSIVE | _BJT | _IND),
     )
-    p.add_argument("--w", type=_parse_si, help="device width (cmim/rsil/rppd/rhigh)")
+    p.add_argument("--w", type=_parse_si, help="device width (cmim/rsil/rppd/rhigh/inductor*)")
     p.add_argument("--l", type=_parse_si, help="device length (cmim/rsil/rppd/rhigh)")
     p.add_argument("--ps", type=_parse_si, default=2e-6, help="poly space (resistors only)")
     p.add_argument("--b", type=int, default=0, help="number of bends (rppd/rhigh only)")
     p.add_argument("--nx", type=int, help="emitter multiplier (BJT only)")
     p.add_argument("--le", type=_parse_si, help="emitter length (BJT only)")
     p.add_argument("--we", type=_parse_si, help="emitter width (BJT only)")
+    p.add_argument("--s", type=_parse_si, help="spiral metal space (inductor* only)")
+    p.add_argument("--d", type=_parse_si, help="spiral diameter (inductor*; default = variant DMIN)")
+    p.add_argument("--nr", type=int, help="number of turns (inductor*; default = variant NR)")
     p.add_argument("--out", required=True, help="output directory")
     p.add_argument("--name", default=None, help="override GDS basename (default auto)")
     args = p.parse_args(argv)
@@ -79,6 +84,15 @@ def main(argv: list[str] | None = None) -> int:
             gds = gen_npn13g2l(args.nx, args.le, args.we, out_dir, name=args.name)
         elif args.device == "npn13g2v":
             gds = gen_npn13g2v(args.nx, args.le, args.we, out_dir, name=args.name)
+    elif args.device in _IND:
+        w = args.w if args.w is not None else 2e-6
+        s = args.s if args.s is not None else 2.1e-6
+        d = args.d if args.d is not None else default_dmin(args.device)
+        nr = args.nr if args.nr is not None else default_nr(args.device)
+        if args.device == "inductor2":
+            gds = gen_inductor2(w, s, d, nr, out_dir, name=args.name)
+        elif args.device == "inductor3":
+            gds = gen_inductor3(w, s, d, nr, out_dir, name=args.name)
     else:
         print(f"Unknown device {args.device}", file=sys.stderr)
         return 2
