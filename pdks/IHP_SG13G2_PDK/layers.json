@@ -1,5 +1,5 @@
 {
-    "_comment": "IHP SG13G2 130nm BiCMOS PDK abstraction for ALIGN. Phase A: LV CMOS (M1-M5, RVT). Phase B: BEOL TM1/TM2 + HV native 3.3V (Thickox). GDS layer numbers extracted from $IHP_PDK_ROOT/ihp-sg13g2/libs.tech/klayout/tech/sg13g2.lyp and sg13g2.map. TM1/TM2 values from rule_decks/sg13g2_tech_default.json (TM1_*, TM2_*, TV1_*, TV2_*, TGO_*).",
+    "_comment": "IHP SG13G2 130nm BiCMOS PDK abstraction for ALIGN. Phase A: LV CMOS (M1-M5, RVT). Phase B: BEOL TM1/TM2 + HV native 3.3V (Thickox). Phase F: Cmim/CmimVia/PolyRes/EXTBlock/SalBlock/RES added with Direction so gds2lefjson emits them as OBS in black_box LEFs (Phase C deuda); V2/V3/V4 retrofit to Vn_a=0.19/Vn_b=0.22 attempted but reverted to Phase A baseline 130x130/180 because the wider via geometry triggered remove_duplicates.check_shorts_induced_by_vias placement errors (see Cmim's _comment in this file). Layer naming Cmim/CmimVia (instead of native IHP names MIM/Vmim) is intentional: pdk.py dispatches names starting with M to addMetal and V to addVia which require full routing-layer params; the generic add() branch fires for any other initial letter. GDS layer numbers from $IHP_PDK_ROOT/ihp-sg13g2/libs.tech/klayout/tech/sg13g2.lyp and sg13g2.map.",
     "ScaleFactor": 1,
     "design_info": {
         "vt_type": [
@@ -563,6 +563,60 @@
             "GdsDatatype": {
                 "Draw": 0
             }
+        },
+        {
+            "_comment": "MIM cap top plate (IHP layer 36/0). Renamed from MIM to Cmim so pdk.py routes it through the generic add() branch instead of addMetal (which would require Pitch/Width/MinL/etc). Direction is set so gds2lefjson.py:31 registers this layer and emits its shapes as OBS in black_box LEFs (cmim/rfcmim PyCells inject these).",
+            "Layer": "Cmim",
+            "GdsLayerNo": 36,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "Direction": "V"
+        },
+        {
+            "_comment": "Via between TopMetal1 and MIM (IHP layer 129/0). Renamed from Vmim to CmimVia so pdk.py routes it through the generic add() branch instead of addVia (which would require Stack/Space/Width/Venc/etc). Emitted as OBS for cmim/rfcmim black_box.",
+            "Layer": "CmimVia",
+            "GdsLayerNo": 129,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "Direction": "V"
+        },
+        {
+            "_comment": "Poly resistor marker (rsil/rppd/rhigh). Includes label (1) and pin (2) datatypes from PyCells; emitted as OBS.",
+            "Layer": "PolyRes",
+            "GdsLayerNo": 128,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "Direction": "V"
+        },
+        {
+            "_comment": "Extension block (drc waiver region). Used by some IHP PyCells as a no-DRC-check area. Emitted as OBS.",
+            "Layer": "EXTBlock",
+            "GdsLayerNo": 111,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "Direction": "V"
+        },
+        {
+            "_comment": "Salicide block marker (un-silicided poly for rppd/rhigh). Emitted as OBS.",
+            "Layer": "SalBlock",
+            "GdsLayerNo": 28,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "Direction": "V"
+        },
+        {
+            "_comment": "RES generic resistor marker (rsil base). Emitted as OBS.",
+            "Layer": "RES",
+            "GdsLayerNo": 24,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "Direction": "V"
         },
         {
             "Layer": "Cap",
