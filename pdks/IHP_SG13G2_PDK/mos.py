@@ -68,6 +68,8 @@ class MOSGenerator(DefaultCanvas):
         activeWidth =  exact_width if exact_width else self.pdk['Active']['Pitch']*fin
         activePitch = self.unitCellHeight
         RVTWidth = activeWidth + 2*self.pdk['Active']['active_enclosure']
+        # Thickox (ThickGateOx, GDS 44) Y-enclosure = Gat_c (poly endcap over Active) + TGO_c (ThickGateOx over poly).
+        ThickoxWidth = activeWidth + 2*(self.pdk['Thickox']['gat_act_endcap'] + self.pdk['Thickox']['tgo_gat_enclosure'])
 
 
         stoppoint = self.pdk['Active']['activePolyExTracks']*self.pdk['M2']['Pitch']
@@ -108,6 +110,11 @@ class MOSGenerator(DefaultCanvas):
                                       clg=UncoloredCenterLineGrid( pitch=activePitch, width=RVTWidth, offset=activeOffset),
                                       spg=EnclosureGrid( pitch=unitCellLength, offset=0, stoppoint=stoppoint, check=True)))
 
+        thickoxStopPoint = max(0, stoppoint - self.pdk['Thickox']['tgo_act_enclosure'])
+        self.Thickox = self.addGen( Wire( 'Thickox', 'Thickox', 'h',
+                                      clg=UncoloredCenterLineGrid( pitch=activePitch, width=ThickoxWidth, offset=activeOffset),
+                                      spg=EnclosureGrid( pitch=unitCellLength, offset=0, stoppoint=thickoxStopPoint, check=False)))
+
         offset = self.gateDummy*self.pdk['Poly']['Pitch']+self.pdk['Poly']['Offset'] - self.pdk['Poly']['Pitch']//2
         stoppoint = self.gateDummy*self.pdk['Poly']['Pitch'] + self.pdk['Poly']['Offset']-self.pdk['Pc']['PcExt']-self.pdk['Poly']['Width']//2
         self.pc = self.addGen( Wire( 'pc', 'Pc', 'h',
@@ -142,6 +149,10 @@ class MOSGenerator(DefaultCanvas):
 
         self.SLVT_diff = self.addGen( Wire( 'SLVT_diff', 'Slvt', 'h',
                                          clg=UncoloredCenterLineGrid( pitch=activePitch, width=RVTWidth, offset=activeOffset),
+                                         spg=SingleGrid( pitch=self.pdk['Poly']['Pitch'], offset=(self.gateDummy-1)*self.pdk['Poly']['Pitch']+self.pdk['Poly']['Pitch']//2)))
+
+        self.Thickox_diff = self.addGen( Wire( 'Thickox_diff', 'Thickox', 'h',
+                                         clg=UncoloredCenterLineGrid( pitch=activePitch, width=ThickoxWidth, offset=activeOffset),
                                          spg=SingleGrid( pitch=self.pdk['Poly']['Pitch'], offset=(self.gateDummy-1)*self.pdk['Poly']['Pitch']+self.pdk['Poly']['Pitch']//2)))
 
         stoppoint = unitCellLength//2-self.pdk['Active']['activebWidth_H']//2
@@ -239,12 +250,22 @@ class MOSGenerator(DefaultCanvas):
                 self.addWire( self.HVT_diff,  None, y, 0, self.gate*x_cells+1)
             else:
                 pass
+
+        def _addThickox(x, y, x_cells):
+            if self.shared_diff == 0:
+                self.addWire( self.Thickox,  None, y,          (x, 1), (x+1, -1))
+            elif self.shared_diff == 1 and x == x_cells-1:
+                self.addWire( self.Thickox_diff,  None, y, 0, self.gate*x_cells+1)
+            else:
+                pass
         if vt_type == 'RVT':
             _addRVT(x, y, x_cells)
         elif vt_type == 'LVT':
             _addLVT(x, y, x_cells)
         elif vt_type == 'HVT':
             _addHVT(x, y, x_cells)
+        elif vt_type == 'HVT_3V3':
+            _addThickox(x, y, x_cells)
         else:
             print("This VT type not supported")
             exit()

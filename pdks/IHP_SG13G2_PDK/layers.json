@@ -1,9 +1,10 @@
 {
-    "_comment": "IHP SG13G2 130nm BiCMOS PDK abstraction for ALIGN. Phase A: LV CMOS only (M1-M5, RVT). TM1/TM2/Thickox added in Phase B. GDS layer numbers extracted from $IHP_PDK_ROOT/ihp-sg13g2/libs.tech/klayout/tech/sg13g2.lyp and sg13g2.map.",
+    "_comment": "IHP SG13G2 130nm BiCMOS PDK abstraction for ALIGN. Phase A: LV CMOS (M1-M5, RVT). Phase B: BEOL TM1/TM2 + HV native 3.3V (Thickox). GDS layer numbers extracted from $IHP_PDK_ROOT/ihp-sg13g2/libs.tech/klayout/tech/sg13g2.lyp and sg13g2.map. TM1/TM2 values from rule_decks/sg13g2_tech_default.json (TM1_*, TM2_*, TV1_*, TV2_*, TGO_*).",
     "ScaleFactor": 1,
     "design_info": {
         "vt_type": [
-            "RVT"
+            "RVT",
+            "HVT_3V3"
         ],
         "top_signal_routing_layer": "M5",
         "bottom_signal_routing_layer": "M2",
@@ -359,6 +360,120 @@
             }
         },
         {
+            "Layer": "TopVia1",
+            "GdsLayerNo": 125,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "Stack": [
+                "M5",
+                "TM1"
+            ],
+            "SpaceX": 420,
+            "SpaceY": 420,
+            "WidthX": 420,
+            "WidthY": 420,
+            "VencA_L": 420,
+            "VencA_H": 420,
+            "VencP_L": 100,
+            "VencP_H": 100,
+            "R": {
+                "L_3Sigma": 8,
+                "Mean": 10,
+                "U_3Sigma": 12
+            }
+        },
+        {
+            "Layer": "TM1",
+            "GdsLayerNo": 126,
+            "GdsDatatype": {
+                "Draw": 0,
+                "Pin": 2,
+                "Label": 25,
+                "Blockage": 4
+            },
+            "Direction": "H",
+            "Color": [],
+            "Pitch": 3280,
+            "Width": 1640,
+            "MinL": 1640,
+            "MaxL": null,
+            "EndToEnd": 700,
+            "Offset": 0,
+            "UnitC": {
+                "L_3Sigma": 0.16,
+                "Mean": 0.2,
+                "U_3Sigma": 0.24
+            },
+            "UnitCC": {
+                "L_3Sigma": 0.08,
+                "Mean": 0.1,
+                "U_3Sigma": 0.12
+            },
+            "UnitR": {
+                "L_3Sigma": 8,
+                "Mean": 10,
+                "U_3Sigma": 12
+            }
+        },
+        {
+            "Layer": "TopVia2",
+            "GdsLayerNo": 133,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "Stack": [
+                "TM1",
+                "TM2"
+            ],
+            "SpaceX": 1060,
+            "SpaceY": 1060,
+            "WidthX": 900,
+            "WidthY": 900,
+            "VencA_L": 500,
+            "VencA_H": 500,
+            "VencP_L": 500,
+            "VencP_H": 500,
+            "R": {
+                "L_3Sigma": 4,
+                "Mean": 5,
+                "U_3Sigma": 6
+            }
+        },
+        {
+            "Layer": "TM2",
+            "GdsLayerNo": 134,
+            "GdsDatatype": {
+                "Draw": 0,
+                "Pin": 2,
+                "Label": 25,
+                "Blockage": 4
+            },
+            "Direction": "V",
+            "Color": [],
+            "Pitch": 4000,
+            "Width": 2000,
+            "MinL": 2000,
+            "MaxL": null,
+            "EndToEnd": 700,
+            "Offset": 0,
+            "UnitC": {
+                "L_3Sigma": 0.16,
+                "Mean": 0.2,
+                "U_3Sigma": 0.24
+            },
+            "UnitCC": {
+                "L_3Sigma": 0.08,
+                "Mean": 0.1,
+                "U_3Sigma": 0.12
+            },
+            "UnitR": {
+                "L_3Sigma": 4,
+                "Mean": 5,
+                "U_3Sigma": 6
+            }
+        },
+        {
             "Layer": "Nwell",
             "GdsLayerNo": 31,
             "GdsDatatype": {
@@ -385,6 +500,16 @@
             "GdsDatatype": {
                 "Draw": 0
             }
+        },
+        {
+            "Layer": "Thickox",
+            "GdsLayerNo": 44,
+            "GdsDatatype": {
+                "Draw": 0
+            },
+            "tgo_act_enclosure": 270,
+            "tgo_gat_enclosure": 340,
+            "gat_act_endcap": 180
         },
         {
             "Layer": "Pb",
