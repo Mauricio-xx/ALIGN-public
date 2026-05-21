@@ -17,3 +17,4 @@ Env:
 from .klayout_runner import run_klayout_script, KLayoutRunError  # noqa: F401
 from .mim import gen_cmim  # noqa: F401
 from .polyres import gen_rsil, gen_rppd, gen_rhigh  # noqa: F401
+from .bjt import gen_npn13g2, gen_npn13g2l, gen_npn13g2v  # noqa: F401
