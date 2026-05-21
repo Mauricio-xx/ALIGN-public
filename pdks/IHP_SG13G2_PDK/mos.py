@@ -361,13 +361,22 @@ class MOSGenerator(DefaultCanvas):
                         self.addWire(self.m3, net, current_track, (miny, -1), (maxy, 1), netType = 'pin')
                     else:
                         pass
-                    # Extend m2 if needed. TODO: What to do if we go beyond cell boundary?
+                    # Extend m2 to cover the V2 column.
+                    # When M3.Pitch == M1.Pitch (Mock PDKs) the legacy mixed-index
+                    # math gives the right physical coords by coincidence; for SG13G2
+                    # (M3.Pitch=560 != M1.Pitch=480) the M3 column index does not map
+                    # to the same physical x as an M1 column, and the strict-grid
+                    # self.m2 extension lands short of the rightmost V2, tripping
+                    # canvas.remove_duplicates.check_shorts_induced_by_vias. Use the
+                    # full-row m2_updated extension (relaxed M1 pitch) whenever pitches
+                    # differ; the merge pass collapses the redundant segment with the
+                    # _connectDevicePins strap.
                     for i, locs in conn.items():
-                        minx, maxx = _get_wire_terminators([*locs, current_track])
-                        if self.pdk['M3']['Pitch'] >= self.pdk['M1']['Pitch']:
+                        if self.pdk['M3']['Pitch'] == self.pdk['M1']['Pitch']:
+                            minx, maxx = _get_wire_terminators([*locs, current_track])
                             self.addWire(self.m2, net, i, (minx, -1), (maxx, 1))
                         else:
-                            self.addWire( self.m2_updated, net, i, (0, 1), (M1_tracks, -1))
+                            self.addWire(self.m2_updated, net, i, (0, 1), (M1_tracks, -1))
 
     def _addBodyContact(self, x, y, x_cells, yloc=None, name='M1'):
         fullname = f'{name}_X{x}_Y{y}'

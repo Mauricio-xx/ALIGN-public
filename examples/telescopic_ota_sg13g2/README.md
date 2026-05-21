@@ -9,10 +9,15 @@ declared in `pdks/IHP_SG13G2_PDK/models.sp`.
 ### Run end-to-end
 
 ```bash
-python -m align.schematic2layout examples/telescopic_ota_sg13g2 \
+mkdir -p /tmp/sg13_ota_run
+schematic2layout.py examples/telescopic_ota_sg13g2 \
     -p pdks/IHP_SG13G2_PDK \
     -w /tmp/sg13_ota_run
 ```
+
+`schematic2layout.py` is the ALIGN CLI entry point (Python script on `PATH` inside
+the `darpaalign/align-public` container). The working directory must exist before
+invocation; ALIGN won't create it.
 
 ### DRC the generated GDS
 

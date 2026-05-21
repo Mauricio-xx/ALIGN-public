@@ -1,5 +1,5 @@
 {
-    "_comment": "IHP SG13G2 130nm BiCMOS PDK abstraction for ALIGN. Phase A: LV CMOS (M1-M5, RVT). Phase B: BEOL TM1/TM2 + HV native 3.3V (Thickox). Phase F: Cmim/CmimVia/PolyRes/EXTBlock/SalBlock/RES added with Direction so gds2lefjson emits them as OBS in black_box LEFs (Phase C deuda); V2/V3/V4 retrofit to Vn_a=0.19/Vn_b=0.22 attempted but reverted to Phase A baseline 130x130/180 because the wider via geometry triggered remove_duplicates.check_shorts_induced_by_vias placement errors (see Cmim's _comment in this file). Layer naming Cmim/CmimVia (instead of native IHP names MIM/Vmim) is intentional: pdk.py dispatches names starting with M to addMetal and V to addVia which require full routing-layer params; the generic add() branch fires for any other initial letter. GDS layer numbers from $IHP_PDK_ROOT/ihp-sg13g2/libs.tech/klayout/tech/sg13g2.lyp and sg13g2.map.",
+    "_comment": "IHP SG13G2 130nm BiCMOS PDK abstraction for ALIGN. Phase A: LV CMOS (M1-M5, RVT). Phase B: BEOL TM1/TM2 + HV native 3.3V (Thickox). Phase F: Cmim/CmimVia/PolyRes/EXTBlock/SalBlock/RES added with Direction so gds2lefjson emits them as OBS in black_box LEFs (Phase C deuda). Phase G: V2/V3/V4 retrofit to IHP Vn_a=0.19 / Vn_b=0.22 / Vn_c=0.05 (WidthX/Y=190, SpaceX/Y=220, VencA=50). The Phase F-era placement assertion was rooted in mos.py:_connectNets mixing M1 contact indices with M3 column index when extending the M2 strap; SG13G2's M3.Pitch (560) != M1.Pitch (480) made the mismatch visible, while Mock PDKs hid it because their M3.Pitch==M1.Pitch. Fix is PDK-local in mos.py, no align/ core touched. Layer naming Cmim/CmimVia (instead of native IHP names MIM/Vmim) is intentional: pdk.py dispatches names starting with M to addMetal and V to addVia which require full routing-layer params; the generic add() branch fires for any other initial letter. GDS layer numbers from $IHP_PDK_ROOT/ihp-sg13g2/libs.tech/klayout/tech/sg13g2.lyp and sg13g2.map.",
     "ScaleFactor": 1,
     "design_info": {
         "vt_type": [
@@ -231,12 +231,12 @@
                 "M2",
                 "M3"
             ],
-            "SpaceX": 180,
-            "SpaceY": 180,
-            "WidthX": 130,
-            "WidthY": 130,
-            "VencA_L": 0,
-            "VencA_H": 0,
+            "SpaceX": 220,
+            "SpaceY": 220,
+            "WidthX": 190,
+            "WidthY": 190,
+            "VencA_L": 50,
+            "VencA_H": 50,
             "VencP_L": 0,
             "VencP_H": 0,
             "R": {
@@ -288,12 +288,12 @@
                 "M3",
                 "M4"
             ],
-            "SpaceX": 180,
-            "SpaceY": 180,
-            "WidthX": 130,
-            "WidthY": 130,
-            "VencA_L": 0,
-            "VencA_H": 0,
+            "SpaceX": 220,
+            "SpaceY": 220,
+            "WidthX": 190,
+            "WidthY": 190,
+            "VencA_L": 50,
+            "VencA_H": 50,
             "VencP_L": 0,
             "VencP_H": 0,
             "R": {
@@ -345,12 +345,12 @@
                 "M4",
                 "M5"
             ],
-            "SpaceX": 180,
-            "SpaceY": 180,
-            "WidthX": 130,
-            "WidthY": 130,
-            "VencA_L": 0,
-            "VencA_H": 0,
+            "SpaceX": 220,
+            "SpaceY": 220,
+            "WidthX": 190,
+            "WidthY": 190,
+            "VencA_L": 50,
+            "VencA_H": 50,
             "VencP_L": 0,
             "VencP_H": 0,
             "R": {
