@@ -12,6 +12,10 @@
 #   minimal   - --precheck_drc, fast subset of foundry-required rules (default).
 #   maximal   - full deck via $IHP_PDK_ROOT/.../drc/rule_decks/sg13g2_maximal.drc style
 #               (passed as no extra flags so the deck runs in its default mode + every BEOL/FEOL table).
+#   prototype - maximal deck minus density rules. Density checks (AFil.g, GFil.g,
+#               M1.j..M5.j, TM1.c, TM2.c) require foundry fill insertion which the
+#               ALIGN flow does not produce; this mode keeps every geometric check
+#               (width, space, enclosure, endcap) while deferring density to signoff.
 #
 # Exit codes:
 #   0 - run completed (violations may still exist; check the RDB summary printed)
@@ -63,7 +67,8 @@ EXTRA_ARGS=()
 case "$MODE" in
     minimal) EXTRA_ARGS+=( --precheck_drc );;
     maximal) ;;
-    *) echo "unknown mode: $MODE (use minimal|maximal)" >&2; exit 2;;
+    prototype) EXTRA_ARGS+=( --no_density );;
+    *) echo "unknown mode: $MODE (use minimal|maximal|prototype)" >&2; exit 2;;
 esac
 
 if [[ -n "$RUN_DIR" ]]; then
