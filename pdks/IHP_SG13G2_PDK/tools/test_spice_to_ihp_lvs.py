@@ -24,10 +24,14 @@ REPO = HERE.parents[2]
 sys.path.insert(0, str(HERE))
 
 from spice_to_ihp_lvs import (
+    DEFAULT_GROUND_NETS,
+    DEFAULT_POWER_NETS,
     _parse_subckts,
     looks_like_user_spice,
+    merge_parallel_devices,
     merge_series_stacks,
     parse_spice_value,
+    remove_dummy_mos_devices,
     translate,
     translate_device_line,
 )
@@ -257,28 +261,38 @@ def test_series_stack_skip_port_net():
 
 
 def test_series_stack_skip_three_neighbors():
-    """Net with 3+ devices is not a series stack."""
+    """Net with 3+ truly-distinct devices is not a series stack.
+
+    The 3 neighbours use distinct gates so the parallel pass does not fold
+    any of them; this isolates the series pass's 3-neighbour skip.
+    """
     text = (
-        ".subckt FOO d g s b\n"
-        "m1 d g mid b nmos_rvt w=100n l=130n nf=1 m=1\n"
-        "m2 mid g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
-        "m3 mid g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".subckt FOO d g1 g2 g3 s b\n"
+        "m1 d g1 mid b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m2 mid g2 s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m3 mid g3 s b nmos_rvt w=100n l=130n nf=1 m=1\n"
         ".ends FOO\n"
     )
     assert len(_mos_lines(translate(text))) == 3
 
 
-def test_series_stack_skip_parallel_dd():
-    """D-D coupling is a parallel arrangement, not a series stack."""
+def test_parallel_dd_coupling_merges_to_one():
+    """Two devices sharing ALL four nodes (D-D, G-G, S-S, B-B) and identical
+    geometry are a true parallel arrangement; the parallel pass folds them
+    into a single device whose W absorbs both contributions."""
     text = (
-        ".subckt FOO g s b\n"
-        "m1 dnet g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
-        "m2 dnet g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".subckt FOO d g s b\n"
+        "m1 d g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m2 d g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
         ".ends FOO\n"
     )
-    # 'g', 's', 'b' are ports. 'dnet' is internal but pins on both devices
-    # touch it via D -> {D, D} fails the {D, S} predicate.
-    assert len(_mos_lines(translate(text))) == 2
+    result = translate(text, suffix="_0")
+    lines = _mos_lines(result)
+    assert len(lines) == 1, f"expected 1 MOS line after parallel merge, got {len(lines)}: {lines}"
+    toks = lines[0].split()
+    assert toks[0].lower() == "m1"  # lower name kept
+    # W must be 200n (= 100n + 100n) regardless of suffix style.
+    assert "W=0.2u" in result
 
 
 def test_series_stack_three_in_series_collapse_to_one():
@@ -335,6 +349,263 @@ def test_telescopic_ota_no_merges():
     dropped, overrides = merge_series_stacks(subckts[0])
     assert dropped == set()
     assert overrides == {}
+
+
+# -- Parallel merge --------------------------------------------------------
+
+def test_parallel_three_devices_sum_w():
+    """Three identical-pin identical-param devices collapse to one with
+    W=3*W_each."""
+    text = (
+        ".subckt FOO d g s b\n"
+        "m1 d g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m2 d g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m3 d g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    result = translate(text, suffix="_0")
+    lines = _mos_lines(result)
+    assert len(lines) == 1
+    assert lines[0].split()[0].lower() == "m1"
+    assert "W=0.3u" in result
+
+
+def test_parallel_lower_name_kept():
+    """Among parallel duplicates, the device with the lowest name is kept."""
+    text = (
+        ".subckt FOO d g s b\n"
+        "mZZ d g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "mAA d g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    result = translate(text, suffix="_0")
+    lines = _mos_lines(result)
+    assert len(lines) == 1
+    assert lines[0].split()[0].lower() == "maa"
+
+
+def test_parallel_skip_different_l():
+    """Identical pins + identical W but different L -- must NOT parallel-merge."""
+    text = (
+        ".subckt FOO d g s b\n"
+        "m1 d g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m2 d g s b nmos_rvt w=100n l=200n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    assert len(_mos_lines(translate(text))) == 2
+
+
+def test_parallel_skip_different_models():
+    text = (
+        ".subckt FOO d g s b\n"
+        "m1 d g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m2 d g s b pmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    assert len(_mos_lines(translate(text))) == 2
+
+
+def test_parallel_skip_different_nodes():
+    """A different drain net breaks parallel grouping even if everything else
+    matches."""
+    text = (
+        ".subckt FOO d1 d2 g s b\n"
+        "m1 d1 g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m2 d2 g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    assert len(_mos_lines(translate(text))) == 2
+
+
+def test_parallel_with_m_multiplier_aggregates_correctly():
+    """Each device contributes w*nf*m to the merged W -- here W_total =
+    100n*2 + 100n*3 = 500n."""
+    text = (
+        ".subckt FOO d g s b\n"
+        "m1 d g s b nmos_rvt w=100n l=130n nf=1 m=2\n"
+        "m2 d g s b nmos_rvt w=100n l=130n nf=1 m=3\n"
+        ".ends FOO\n"
+    )
+    # m1 and m2 differ in m -> ALIGN's parity rule does NOT group them.
+    # Each emits independently with W = 100n * nf * m.
+    result = translate(text, suffix="_0")
+    lines = _mos_lines(result)
+    assert len(lines) == 2
+    assert "W=0.2u" in result  # from m1 (100n * 1 * 2)
+    assert "W=0.3u" in result  # from m2 (100n * 1 * 3)
+
+
+def test_parallel_then_series_pipeline():
+    """A parallel pair on one side of a series net should fold to one device
+    that then series-merges with the partner on the far side. Pipeline order:
+    parallel -> series -> dummy."""
+    text = (
+        ".subckt FOO d g s b\n"
+        "m1 d g mid b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m2 d g mid b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m3 mid g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    # Parallel pass folds m1+m2 -> m1 (W=200n).
+    # Series pass folds m1+m3 over `mid` -> m1 absorbs S=s. m3 dropped.
+    # Final: 1 MOS line, m1, nodes (d, g, s, b), W=200n.
+    result = translate(text, suffix="_0")
+    lines = _mos_lines(result)
+    assert len(lines) == 1
+    toks = lines[0].split()
+    assert toks[0].lower() == "m1"
+    assert [t.lower() for t in toks[1:5]] == ["d", "g", "s", "b"]
+    assert "W=0.2u" in result
+
+
+def test_telescopic_ota_no_parallel_merges():
+    """Telescopic OTA's cascodes share models but differ in gates -- the
+    parallel pass must not fire on any of them. Backs the golden test."""
+    text = OTA_USER_SP.read_text()
+    subckts = _parse_subckts(text.splitlines())
+    assert len(subckts) == 1
+    dropped, w_overrides = merge_parallel_devices(subckts[0])
+    assert dropped == set(), f"unexpected parallel drops: {dropped}"
+    assert w_overrides == {}
+
+
+def test_cmc_ota_no_parallel_merges_before_series():
+    """CMC OTA's cascode partners share models but their 4-node tuples
+    differ (stack-internal nets), so parallel pass must not fire. The
+    Phase N golden case (12-MOS -> 10-MOS) depends on series merging only."""
+    text = CMC_OTA_USER_SP.read_text()
+    subckts = _parse_subckts(text.splitlines())
+    assert len(subckts) == 1
+    dropped, w_overrides = merge_parallel_devices(subckts[0])
+    assert dropped == set(), f"unexpected parallel drops on CMC OTA: {dropped}"
+    assert w_overrides == {}
+
+
+# -- Dummy removal ---------------------------------------------------------
+
+def test_dummy_pmos_gate_to_vdd_dropped():
+    """A PMOS whose gate is tied to vdd is an always-off pull-up -> drop."""
+    text = (
+        ".subckt FOO d s b vdd\n"
+        "m1 d vdd s b pmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    result = translate(text, suffix="_0")
+    assert _mos_lines(result) == []
+
+
+def test_dummy_nmos_gate_to_vss_dropped():
+    text = (
+        ".subckt FOO d s b vss\n"
+        "m1 d vss s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    result = translate(text, suffix="_0")
+    assert _mos_lines(result) == []
+
+
+def test_dummy_nmos_gate_to_gnd_dropped():
+    """'gnd' is in the default ground set."""
+    text = (
+        ".subckt FOO d s b gnd\n"
+        "m1 d gnd s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    result = translate(text, suffix="_0")
+    assert _mos_lines(result) == []
+
+
+def test_dummy_nmos_gate_to_zero_dropped():
+    """SPICE classical ground '0' is in the default ground set."""
+    text = (
+        ".subckt FOO d s b\n"
+        "m1 d 0 s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    result = translate(text, suffix="_0")
+    assert _mos_lines(result) == []
+
+
+def test_dummy_diode_shorted_dropped():
+    """A MOS with D == G == S is a decap-style single-net dummy -> drop."""
+    text = (
+        ".subckt FOO net b\n"
+        "m1 net net net b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    result = translate(text, suffix="_0")
+    assert _mos_lines(result) == []
+
+
+def test_dummy_normal_mos_preserved():
+    """A normal MOS (gate not on a power/ground rail, D!=G!=S) is preserved."""
+    text = (
+        ".subckt FOO d g s b\n"
+        "m1 d g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    assert len(_mos_lines(translate(text))) == 1
+
+
+def test_dummy_pmos_gate_to_ground_preserved():
+    """A PMOS gate tied to GROUND is a normal switch (always on) -> keep."""
+    text = (
+        ".subckt FOO d s b vss\n"
+        "m1 d vss s b pmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    # PMOS with G in gnd set: not in any drop pattern (only PMOS-to-power
+    # drops, and D==G==S is false here). Preserved.
+    assert len(_mos_lines(translate(text))) == 1
+
+
+def test_dummy_nmos_gate_to_power_preserved():
+    """An NMOS gate tied to POWER is a normal switch (always on) -> keep."""
+    text = (
+        ".subckt FOO d s b vdd\n"
+        "m1 d vdd s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    assert len(_mos_lines(translate(text))) == 1
+
+
+def test_dummy_custom_power_net():
+    """CLI --power flag overrides the default power-net set."""
+    text = (
+        ".subckt FOO d s b avdd\n"
+        "m1 d avdd s b pmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    # Default does not include 'avdd' -> m1 preserved.
+    assert len(_mos_lines(translate(text))) == 1
+    # Custom power set covers 'avdd' -> m1 dropped.
+    result = translate(text, power_nets={"avdd"})
+    assert _mos_lines(result) == []
+
+
+def test_dummy_telescopic_ota_no_false_drops():
+    """Telescopic OTA must not lose any device to the dummy pass. Backs the
+    golden LVS test."""
+    text = OTA_USER_SP.read_text()
+    subckts = _parse_subckts(text.splitlines())
+    dropped = remove_dummy_mos_devices(
+        subckts[0],
+        power_nets=DEFAULT_POWER_NETS,
+        gnd_nets=DEFAULT_GROUND_NETS,
+    )
+    assert dropped == set(), f"unexpected dummy drops on telescopic OTA: {dropped}"
+
+
+def test_dummy_cmc_ota_no_false_drops():
+    """CMC OTA must not lose any device to the dummy pass. Backs Phase N."""
+    text = CMC_OTA_USER_SP.read_text()
+    subckts = _parse_subckts(text.splitlines())
+    dropped = remove_dummy_mos_devices(
+        subckts[0],
+        power_nets=DEFAULT_POWER_NETS,
+        gnd_nets=DEFAULT_GROUND_NETS,
+    )
+    assert dropped == set(), f"unexpected dummy drops on CMC OTA: {dropped}"
 
 
 def _all_tests():

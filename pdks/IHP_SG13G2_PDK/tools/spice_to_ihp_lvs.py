@@ -121,15 +121,20 @@ def parse_kv_params(tokens):
     return params
 
 
-def translate_device_line(line: str) -> str:
-    """Translate a MOS device line. Non-MOS lines are returned unchanged."""
+def translate_device_line(line: str, w_override_meters: Optional[float] = None) -> str:
+    """Translate a MOS device line. Non-MOS lines are returned unchanged.
+
+    If ``w_override_meters`` is supplied, it is used as the emitted W value
+    instead of the per-line ``w*nf*m`` product. This is the path taken by
+    parallel-merged kept devices, whose total W is the sum of the merged
+    group's per-finger contributions.
+    """
     if not line.strip():
         return line
     tokens = line.split()
     head = tokens[0]
     if not head.lower().startswith("m"):
         return line
-    # Expect: M<id> n1 n2 n3 n4 model [params...]
     if len(tokens) < 6:
         return line
     name = tokens[0]
@@ -148,10 +153,13 @@ def translate_device_line(line: str) -> str:
         return line  # malformed: pass through
 
     try:
-        nf = int(float(params.get("nf", "1")))
-        m_mult = int(float(params.get("m", "1")))
-        w_eff = parse_spice_value(w_str) * nf * m_mult
         l_val = parse_spice_value(l_str)
+        if w_override_meters is not None:
+            w_eff = w_override_meters
+        else:
+            nf = int(float(params.get("nf", "1")))
+            m_mult = int(float(params.get("m", "1")))
+            w_eff = parse_spice_value(w_str) * nf * m_mult
     except ValueError:
         return line
 
@@ -246,7 +254,7 @@ def _parse_subckts(lines: list) -> list:
     return subckts
 
 
-def merge_series_stacks(subckt: _Subckt):
+def merge_series_stacks(subckt: _Subckt, skip_lines: set | None = None):
     """Apply ALIGN's add_series_devices semantics on a parsed subckt.
 
     Iterates to fixed point: each pass scans every internal net, and the first
@@ -257,13 +265,20 @@ def merge_series_stacks(subckt: _Subckt):
     net via OPPOSITE channel pins (one D, one S), that effectively pulls in
     the dropped device's other-side net.
 
+    ``skip_lines`` lets the caller hide devices that an earlier pipeline pass
+    has already dropped (e.g. parallel-merged duplicates), so they neither
+    participate in series detection nor inflate net-neighbour counts.
+
     Returns (dropped_line_nos: set[int], overrides: dict[int -> list[str]]).
     Only line numbers of MOS lines that were dropped or mutated appear in
     the return value.
     """
+    skip_lines = skip_lines or set()
     port_set = {p.lower() for p in subckt.ports}
-    devices_by_line = {dev.line_no: dev for dev in subckt.devices}
-    original_nodes = {dev.line_no: list(dev.nodes) for dev in subckt.devices}
+    devices_by_line = {
+        dev.line_no: dev for dev in subckt.devices if dev.line_no not in skip_lines
+    }
+    original_nodes = {ln: list(dev.nodes) for ln, dev in devices_by_line.items()}
     current_nodes = {ln: list(nodes) for ln, nodes in original_nodes.items()}
     alive = set(devices_by_line)
 
@@ -321,6 +336,143 @@ def merge_series_stacks(subckt: _Subckt):
     return dropped_lines, overrides
 
 
+# Parallel-device merge -- mirrors align/compiler/preprocess.py:add_parallel_devices.
+# When two or more MOS devices share the same model, the same 4-node tuple
+# (D, G, S, B), and the same per-finger geometry, ALIGN's preprocess folds
+# them into a single device and aggregates PARALLEL=sum across the group.
+# KLayout's LVS extraction folds the laid-out parallel fingers into ONE
+# device whose W is the sum of per-finger widths, so the .lvs.sp that feeds
+# run_lvs.py must reflect that fold too -- otherwise device counts diverge.
+# This pass reproduces ALIGN's grouping on the host SPICE token stream.
+
+
+def merge_parallel_devices(subckt: _Subckt, skip_lines: set | None = None):
+    """Group identical-pin MOS devices in ``subckt`` and emit fold metadata.
+
+    Two devices group iff:
+      - their lowered model name maps via ``MODEL_MAP``,
+      - their 4-node tuple is identical (case-insensitive),
+      - their per-finger geometry (w, l) and multipliers (nf, m) match.
+
+    Within a group of size >= 2, the device whose name sorts lowest is kept
+    and its emitted W is overridden with ``sum(w_i * nf_i * m_i)`` over the
+    group, matching KLayout's parallel-finger fold. The other group members
+    are returned as dropped.
+
+    Returns:
+        (dropped_lines: set[int], w_overrides: dict[int -> float meters]).
+    Only kept-and-grown devices appear in ``w_overrides``; ungrouped devices
+    keep the per-line ``w*nf*m`` computed by ``translate_device_line``.
+    """
+    skip_lines = skip_lines or set()
+    groups: dict = {}
+    for dev in subckt.devices:
+        if dev.line_no in skip_lines:
+            continue
+        if dev.model.lower() not in MODEL_MAP:
+            continue
+        try:
+            w_m = parse_spice_value(dev.params.get("w", ""))
+            l_m = parse_spice_value(dev.params.get("l", ""))
+            nf = int(float(dev.params.get("nf", "1")))
+            m = int(float(dev.params.get("m", "1")))
+        except ValueError:
+            continue
+        key = (
+            dev.model.lower(),
+            tuple(n.lower() for n in dev.nodes),
+            round(w_m * 1e15),
+            round(l_m * 1e15),
+            nf,
+            m,
+        )
+        groups.setdefault(key, []).append((dev, w_m, nf, m))
+
+    dropped_lines: set = set()
+    w_overrides: dict = {}
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        sorted_group = sorted(group, key=lambda x: x[0].name.lower())
+        keep_dev = sorted_group[0][0]
+        w_total = sum(w_m * nf * m for _, w_m, nf, m in sorted_group)
+        w_overrides[keep_dev.line_no] = w_total
+        for dropped, _, _, _ in sorted_group[1:]:
+            dropped_lines.add(dropped.line_no)
+    return dropped_lines, w_overrides
+
+
+# Dummy-device removal -- mirrors align/compiler/preprocess.py:remove_dummy_devices.
+# Three patterns are dropped:
+#   - PMOS whose gate is tied to a power net (always-off pull-up).
+#   - NMOS whose gate is tied to a ground net (always-off pull-down).
+#   - Any MOS with D == G == S (diode-shorted single-net dummy, decap-style).
+# Net membership is set by the caller via ``power_nets`` / ``gnd_nets``;
+# CLI defaults cover the SG13G2 examples (vdd / vss + gnd + 0).
+
+DEFAULT_POWER_NETS = frozenset({"vdd"})
+DEFAULT_GROUND_NETS = frozenset({"vss", "gnd", "0"})
+
+
+def _classify_mos(model: str) -> str:
+    """Return 'nmos', 'pmos', or '' if ``model`` is not a known MOS alias.
+
+    Recognised aliases are the keys of ``MODEL_MAP`` plus their case
+    variants. Models that aren't translatable (i.e. would pass through
+    ``translate_device_line`` unchanged) are not classifiable -- the dummy
+    pass leaves them alone.
+    """
+    m = model.lower()
+    if m not in MODEL_MAP:
+        return ""
+    if "nmos" in m or m.startswith("nfet"):
+        return "nmos"
+    if "pmos" in m or m.startswith("pfet"):
+        return "pmos"
+    return ""
+
+
+def remove_dummy_mos_devices(
+    subckt: _Subckt,
+    power_nets,
+    gnd_nets,
+    skip_lines: set | None = None,
+    node_overrides: dict | None = None,
+):
+    """Return MOS line_nos that match ALIGN's dummy-device patterns.
+
+    ``power_nets`` and ``gnd_nets`` are case-insensitive sets of net names
+    that classify a gate-tied PMOS / NMOS as always-off. ``node_overrides``
+    lets the caller pass post-series-merge node lists so absorbed far-side
+    nets correctly classify dummies (e.g. a series-merged PMOS whose new
+    gate becomes VDD).
+    """
+    skip_lines = skip_lines or set()
+    node_overrides = node_overrides or {}
+    power_lc = {p.lower() for p in power_nets} if power_nets else set()
+    gnd_lc = {g.lower() for g in gnd_nets} if gnd_nets else set()
+
+    dropped_lines: set = set()
+    for dev in subckt.devices:
+        if dev.line_no in skip_lines:
+            continue
+        kind = _classify_mos(dev.model)
+        if not kind:
+            continue
+        nodes = node_overrides.get(dev.line_no, dev.nodes)
+        d_node = nodes[_MOS_PIN_INDEX["D"]].lower()
+        g_node = nodes[_MOS_PIN_INDEX["G"]].lower()
+        s_node = nodes[_MOS_PIN_INDEX["S"]].lower()
+
+        if kind == "pmos" and g_node in power_lc:
+            dropped_lines.add(dev.line_no)
+        elif kind == "nmos" and g_node in gnd_lc:
+            dropped_lines.add(dev.line_no)
+        elif d_node == g_node == s_node:
+            dropped_lines.add(dev.line_no)
+    return dropped_lines
+
+
 def _rewrite_mos_nodes(line: str, new_nodes: list) -> str:
     """Replace tokens 1..4 of a MOS line with the supplied nodes."""
     tokens = line.split()
@@ -346,20 +498,56 @@ def _apply_topcell(name: str, suffix: str, topcell: str | None) -> str:
     return default
 
 
-def translate(text: str, suffix: str = "_0", topcell: str | None = None) -> str:
-    """Translate a full SPICE deck. Returns the translated text."""
+def translate(
+    text: str,
+    suffix: str = "_0",
+    topcell: str | None = None,
+    power_nets=None,
+    gnd_nets=None,
+) -> str:
+    """Translate a full SPICE deck. Returns the translated text.
+
+    Preprocessing pipeline mirrors ``align/compiler/preprocess.py:42-53``:
+      1. ``merge_parallel_devices``  -- fold identical-pin duplicates, sum W.
+      2. ``merge_series_stacks``     -- collapse D-S coupled chains, absorb
+                                       the dropped partner's far-side net.
+      3. ``remove_dummy_mos_devices`` -- drop gate-tied always-off MOS and
+                                       D=G=S diode-shorted dummies.
+
+    Each pass is gated on the prior pass's drop set, so already-merged
+    devices neither participate in subsequent detection nor inflate net
+    neighbour counts. ``power_nets`` / ``gnd_nets`` default to the SG13G2
+    examples' conventions (vdd / vss + gnd + 0).
+    """
+    if power_nets is None:
+        power_nets = DEFAULT_POWER_NETS
+    if gnd_nets is None:
+        gnd_nets = DEFAULT_GROUND_NETS
+
     subckt_re = re.compile(r"^\s*\.subckt\s+(\S+)\s+(.*)$", re.IGNORECASE)
     ends_re = re.compile(r"^\s*\.ends(?:\s+(\S+))?\s*$", re.IGNORECASE)
     lines = text.splitlines()
 
-    # Pre-pass: parse subckts and compute series-stack merges per subckt.
+    # Pre-pass: parse subckts and run ALIGN's preprocess sequence per subckt.
     subckts = _parse_subckts(lines)
     dropped_lines: set = set()
     line_overrides: dict = {}
+    w_overrides: dict = {}
     for sub in subckts:
-        d, o = merge_series_stacks(sub)
-        dropped_lines |= d
-        line_overrides.update(o)
+        dp, wo = merge_parallel_devices(sub, skip_lines=dropped_lines)
+        dropped_lines |= dp
+        w_overrides.update(wo)
+
+        ds, no = merge_series_stacks(sub, skip_lines=dropped_lines)
+        dropped_lines |= ds
+        line_overrides.update(no)
+
+        dd = remove_dummy_mos_devices(
+            sub, power_nets, gnd_nets,
+            skip_lines=dropped_lines,
+            node_overrides=line_overrides,
+        )
+        dropped_lines |= dd
 
     out_lines = []
     rename_map: dict[str, str] = {}
@@ -391,7 +579,9 @@ def translate(text: str, suffix: str = "_0", topcell: str | None = None) -> str:
         if i in line_overrides:
             line = _rewrite_mos_nodes(line, line_overrides[i])
 
-        out_lines.append(translate_device_line(line))
+        out_lines.append(
+            translate_device_line(line, w_override_meters=w_overrides.get(i))
+        )
 
     return "\n".join(out_lines) + "\n"
 
@@ -413,10 +603,31 @@ def main(argv=None) -> int:
         "--topcell", default=None,
         help="explicit top-cell name to use for the matching subckt",
     )
+    ap.add_argument(
+        "--power", default=None,
+        help="comma-separated power nets for dummy-device detection "
+             f"(default: {','.join(sorted(DEFAULT_POWER_NETS))})",
+    )
+    ap.add_argument(
+        "--ground", default=None,
+        help="comma-separated ground nets for dummy-device detection "
+             f"(default: {','.join(sorted(DEFAULT_GROUND_NETS))})",
+    )
     args = ap.parse_args(argv)
 
+    def _parse_nets(arg, default):
+        if arg is None:
+            return set(default)
+        return {p.strip() for p in arg.split(",") if p.strip()}
+
+    power_nets = _parse_nets(args.power, DEFAULT_POWER_NETS)
+    gnd_nets = _parse_nets(args.ground, DEFAULT_GROUND_NETS)
+
     text = Path(args.input).read_text()
-    result = translate(text, suffix=args.suffix, topcell=args.topcell)
+    result = translate(
+        text, suffix=args.suffix, topcell=args.topcell,
+        power_nets=power_nets, gnd_nets=gnd_nets,
+    )
 
     if args.output:
         Path(args.output).write_text(result)
