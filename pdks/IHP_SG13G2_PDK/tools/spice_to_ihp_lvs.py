@@ -36,7 +36,9 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 # ALIGN-side alias -> IHP foundry model. Keep keys lowercase.
 MODEL_MAP = {
@@ -161,6 +163,175 @@ def translate_device_line(line: str) -> str:
     return " ".join(new_tokens)
 
 
+# Series-stack merge — mirrors align/compiler/preprocess.py:add_series_devices.
+# When the user-facing SPICE contains a {D,S}-coupled pair of same-model
+# same-gate same-body same-params devices over a 2-neighbor internal net,
+# ALIGN's preprocess collapses them into one device with STACK=N+M and the
+# PDK primitive renders the stacked form. KLayout LVS folds the rendered
+# series fingers back into one device on extraction, so the .lvs.sp that
+# feeds run_lvs.py must also drop the merged partner -- otherwise device
+# counts diverge. This block reproduces the same merge purely on the
+# host SPICE token stream (no align/networkx dependency).
+
+_MOS_PIN_INDEX = {"D": 0, "G": 1, "S": 2, "B": 3}
+_MOS_PIN_NAMES = ("D", "G", "S", "B")
+
+
+@dataclass
+class _Device:
+    line_no: int          # index into the input lines list
+    name: str             # 'm20'
+    nodes: list           # [D, G, S, B]
+    model: str            # lowercased on use
+    params: dict          # lowercased keys
+
+
+@dataclass
+class _Subckt:
+    header_line_no: int
+    name: str
+    ports: list
+    devices: list = field(default_factory=list)
+    ends_line_no: Optional[int] = None
+
+
+def _parse_mos_line(line: str, line_no: int) -> Optional[_Device]:
+    """Return a _Device for SPICE MOS lines (M<id> D G S B model ...); else None."""
+    tokens = line.split()
+    if len(tokens) < 6:
+        return None
+    head = tokens[0]
+    if not head.lower().startswith("m"):
+        return None
+    if head.startswith("."):
+        return None
+    return _Device(
+        line_no=line_no,
+        name=head,
+        nodes=tokens[1:5],
+        model=tokens[5],
+        params=parse_kv_params(tokens[6:]),
+    )
+
+
+def _parse_subckts(lines: list) -> list:
+    """Parse the deck into _Subckt entries. Lines outside .subckt blocks are
+    ignored for merge purposes (top-level MOS without a subckt is rare in
+    ALIGN user input and not the target of series-stack merging here)."""
+    subckt_re = re.compile(r"^\s*\.subckt\s+(\S+)\s+(.*)$", re.IGNORECASE)
+    ends_re = re.compile(r"^\s*\.ends\b", re.IGNORECASE)
+    subckts: list = []
+    current: Optional[_Subckt] = None
+    for i, raw in enumerate(lines):
+        line = raw.rstrip()
+        m = subckt_re.match(line)
+        if m:
+            current = _Subckt(
+                header_line_no=i,
+                name=m.group(1),
+                ports=m.group(2).split(),
+            )
+            subckts.append(current)
+            continue
+        if ends_re.match(line):
+            if current is not None:
+                current.ends_line_no = i
+            current = None
+            continue
+        if current is None:
+            continue
+        dev = _parse_mos_line(line, i)
+        if dev is not None:
+            current.devices.append(dev)
+    return subckts
+
+
+def merge_series_stacks(subckt: _Subckt):
+    """Apply ALIGN's add_series_devices semantics on a parsed subckt.
+
+    Iterates to fixed point: each pass scans every internal net, and the first
+    qualifying merge collapses the higher-named partner into the lower-named
+    one (matching ALIGN's sorted-neighbours behaviour). On merge, the kept
+    device's pin that touches the internal net is replaced with the dropped
+    device's value at the SAME pin name -- since the two devices touch the
+    net via OPPOSITE channel pins (one D, one S), that effectively pulls in
+    the dropped device's other-side net.
+
+    Returns (dropped_line_nos: set[int], overrides: dict[int -> list[str]]).
+    Only line numbers of MOS lines that were dropped or mutated appear in
+    the return value.
+    """
+    port_set = {p.lower() for p in subckt.ports}
+    devices_by_line = {dev.line_no: dev for dev in subckt.devices}
+    original_nodes = {dev.line_no: list(dev.nodes) for dev in subckt.devices}
+    current_nodes = {ln: list(nodes) for ln, nodes in original_nodes.items()}
+    alive = set(devices_by_line)
+
+    changed = True
+    while changed:
+        changed = False
+        # net (lowercase) -> {device_line: set(pin_name)}
+        adjacency: dict = {}
+        for line_no in alive:
+            for pin_name, net in zip(_MOS_PIN_NAMES, current_nodes[line_no]):
+                adjacency.setdefault(net.lower(), {}).setdefault(line_no, set()).add(pin_name)
+
+        for net, dev_pins in adjacency.items():
+            if net in port_set:
+                continue
+            if len(dev_pins) != 2:
+                continue
+            items = list(dev_pins.items())
+            lineA, pinsA = items[0]
+            lineB, pinsB = items[1]
+            if len(pinsA) != 1 or len(pinsB) != 1:
+                continue
+            pinA = next(iter(pinsA))
+            pinB = next(iter(pinsB))
+            if {pinA, pinB} != {"D", "S"}:
+                continue
+            devA = devices_by_line[lineA]
+            devB = devices_by_line[lineB]
+            if devA.model.lower() != devB.model.lower():
+                continue
+            if current_nodes[lineA][_MOS_PIN_INDEX["G"]] != current_nodes[lineB][_MOS_PIN_INDEX["G"]]:
+                continue
+            if current_nodes[lineA][_MOS_PIN_INDEX["B"]] != current_nodes[lineB][_MOS_PIN_INDEX["B"]]:
+                continue
+            paramsA = {k: v for k, v in devA.params.items() if k != "stack"}
+            paramsB = {k: v for k, v in devB.params.items() if k != "stack"}
+            if paramsA != paramsB:
+                continue
+            if devA.name.lower() < devB.name.lower():
+                keep_line, drop_line, keep_pin = lineA, lineB, pinA
+            else:
+                keep_line, drop_line, keep_pin = lineB, lineA, pinB
+            keep_idx = _MOS_PIN_INDEX[keep_pin]
+            current_nodes[keep_line][keep_idx] = current_nodes[drop_line][keep_idx]
+            alive.discard(drop_line)
+            changed = True
+            break
+
+    dropped_lines = set(devices_by_line) - alive
+    overrides = {
+        ln: current_nodes[ln]
+        for ln in alive
+        if current_nodes[ln] != original_nodes[ln]
+    }
+    return dropped_lines, overrides
+
+
+def _rewrite_mos_nodes(line: str, new_nodes: list) -> str:
+    """Replace tokens 1..4 of a MOS line with the supplied nodes."""
+    tokens = line.split()
+    if len(tokens) < 6:
+        return line
+    if not tokens[0].lower().startswith("m"):
+        return line
+    tokens[1:5] = list(new_nodes)
+    return " ".join(tokens)
+
+
 def _apply_topcell(name: str, suffix: str, topcell: str | None) -> str:
     """Return the renamed subckt identifier."""
     default = name.upper() + suffix
@@ -179,10 +350,23 @@ def translate(text: str, suffix: str = "_0", topcell: str | None = None) -> str:
     """Translate a full SPICE deck. Returns the translated text."""
     subckt_re = re.compile(r"^\s*\.subckt\s+(\S+)\s+(.*)$", re.IGNORECASE)
     ends_re = re.compile(r"^\s*\.ends(?:\s+(\S+))?\s*$", re.IGNORECASE)
+    lines = text.splitlines()
+
+    # Pre-pass: parse subckts and compute series-stack merges per subckt.
+    subckts = _parse_subckts(lines)
+    dropped_lines: set = set()
+    line_overrides: dict = {}
+    for sub in subckts:
+        d, o = merge_series_stacks(sub)
+        dropped_lines |= d
+        line_overrides.update(o)
+
     out_lines = []
     rename_map: dict[str, str] = {}
 
-    for raw in text.splitlines():
+    for i, raw in enumerate(lines):
+        if i in dropped_lines:
+            continue
         line = raw.rstrip()
 
         m = subckt_re.match(line)
@@ -203,6 +387,9 @@ def translate(text: str, suffix: str = "_0", topcell: str | None = None) -> str:
                 new_name = rename_map.get(tag.upper(), tag.upper() + suffix)
                 out_lines.append(f".ENDS {new_name}")
             continue
+
+        if i in line_overrides:
+            line = _rewrite_mos_nodes(line, line_overrides[i])
 
         out_lines.append(translate_device_line(line))
 

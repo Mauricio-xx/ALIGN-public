@@ -54,6 +54,7 @@ pycharm/
 **/tmp/
 **/work/
 **/Results/
+.tmp_runs/
 **/LOG/
 **/test_PnR
 **/_cmake.py

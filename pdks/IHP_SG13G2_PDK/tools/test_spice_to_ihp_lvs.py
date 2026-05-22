@@ -24,7 +24,9 @@ REPO = HERE.parents[2]
 sys.path.insert(0, str(HERE))
 
 from spice_to_ihp_lvs import (
+    _parse_subckts,
     looks_like_user_spice,
+    merge_series_stacks,
     parse_spice_value,
     translate,
     translate_device_line,
@@ -32,6 +34,7 @@ from spice_to_ihp_lvs import (
 
 OTA_USER_SP = REPO / "examples/telescopic_ota_sg13g2/telescopic_ota_sg13g2.sp"
 OTA_LVS_SP = REPO / "examples/telescopic_ota_sg13g2/telescopic_ota_sg13g2.lvs.sp"
+CMC_OTA_USER_SP = REPO / "examples/current_mirror_ota_sg13g2/current_mirror_ota_sg13g2.sp"
 
 
 def _approx(a: float, b: float, rel: float = 1e-9) -> bool:
@@ -157,6 +160,181 @@ def test_translate_preserves_comments():
     text = "* a comment\n.subckt FOO a b\nm1 a b 0 0 nmos_rvt w=100n l=130n\n.ends FOO\n"
     result = translate(text, suffix="_0")
     assert "* a comment" in result
+
+
+def _mos_lines(text):
+    return [
+        l for l in text.splitlines()
+        if l.split() and l.split()[0].lower().startswith("m")
+        and not l.split()[0].startswith(".")
+    ]
+
+
+def test_series_stack_basic_ds_merge():
+    """Two same-model same-gate same-body same-param devices sharing an
+    internal D-S net must collapse into a single device that absorbs the
+    dropped partner's far-side net."""
+    text = (
+        ".subckt FOO d g s b\n"
+        "m1 d g stk b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m2 stk g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    result = translate(text, suffix="_0")
+    lines = _mos_lines(result)
+    assert len(lines) == 1, f"expected 1 MOS line after merge, got {len(lines)}: {lines}"
+    # Kept device should be m1 with S absorbed from m2 -> 's'.
+    toks = lines[0].split()
+    assert toks[0].lower() == "m1"
+    assert [t.lower() for t in toks[1:5]] == ["d", "g", "s", "b"]
+    assert toks[5].lower() == "sg13_lv_nmos"
+
+
+def test_series_stack_keeps_lower_name_drops_higher():
+    """Higher-named partner is dropped; lower-named is kept (matches ALIGN's
+    sorted-neighbours selection)."""
+    text = (
+        ".subckt FOO d g s b\n"
+        "mZZ stk g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "mAA d g stk b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    result = translate(text, suffix="_0")
+    lines = _mos_lines(result)
+    assert len(lines) == 1
+    assert lines[0].split()[0].lower() == "maa"
+
+
+def test_series_stack_skip_different_gates():
+    text = (
+        ".subckt FOO d g1 g2 s b\n"
+        "m1 d g1 stk b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m2 stk g2 s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    assert len(_mos_lines(translate(text))) == 2
+
+
+def test_series_stack_skip_different_bodies():
+    text = (
+        ".subckt FOO d g s b1 b2\n"
+        "m1 d g stk b1 nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m2 stk g s b2 nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    assert len(_mos_lines(translate(text))) == 2
+
+
+def test_series_stack_skip_different_models():
+    text = (
+        ".subckt FOO d g s b\n"
+        "m1 d g stk b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m2 stk g s b pmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    assert len(_mos_lines(translate(text))) == 2
+
+
+def test_series_stack_skip_different_params():
+    text = (
+        ".subckt FOO d g s b\n"
+        "m1 d g stk b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m2 stk g s b nmos_rvt w=100n l=200n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    assert len(_mos_lines(translate(text))) == 2
+
+
+def test_series_stack_skip_port_net():
+    """Internal stack node promoted to a port must NOT trigger merge."""
+    text = (
+        ".subckt FOO d g s b stk\n"
+        "m1 d g stk b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m2 stk g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    assert len(_mos_lines(translate(text))) == 2
+
+
+def test_series_stack_skip_three_neighbors():
+    """Net with 3+ devices is not a series stack."""
+    text = (
+        ".subckt FOO d g s b\n"
+        "m1 d g mid b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m2 mid g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m3 mid g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    assert len(_mos_lines(translate(text))) == 3
+
+
+def test_series_stack_skip_parallel_dd():
+    """D-D coupling is a parallel arrangement, not a series stack."""
+    text = (
+        ".subckt FOO g s b\n"
+        "m1 dnet g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m2 dnet g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    # 'g', 's', 'b' are ports. 'dnet' is internal but pins on both devices
+    # touch it via D -> {D, D} fails the {D, S} predicate.
+    assert len(_mos_lines(translate(text))) == 2
+
+
+def test_series_stack_three_in_series_collapse_to_one():
+    """Chain of 3 stacked devices must collapse to 1 via fixed-point iteration."""
+    text = (
+        ".subckt FOO d g s b\n"
+        "m1 d g s1 b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m2 s1 g s2 b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "m3 s2 g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends FOO\n"
+    )
+    result = translate(text, suffix="_0")
+    lines = _mos_lines(result)
+    assert len(lines) == 1
+    toks = lines[0].split()
+    assert toks[0].lower() == "m1"
+    assert [t.lower() for t in toks[1:5]] == ["d", "g", "s", "b"]
+
+
+def test_cmc_ota_collapses_to_10_mos():
+    """The Phase N target: 12-MOS current_mirror_ota_sg13g2.sp (with m20/m20s
+    and m18/m18s cascode stacks) must translate to a 10-MOS .lvs.sp -- matching
+    the 10-MOS layout extracted by KLayout."""
+    text = CMC_OTA_USER_SP.read_text()
+    result = translate(text, suffix="_0", topcell="CURRENT_MIRROR_OTA_SG13G2_0")
+    lines = _mos_lines(result)
+    assert len(lines) == 10, f"expected 10 MOS lines after merge, got {len(lines)}"
+
+    by_name = {l.split()[0].lower(): l for l in lines}
+    # m20s and m18s must be dropped.
+    assert "m20s" not in by_name
+    assert "m18s" not in by_name
+    # m20 must absorb m20s's D -> vbiasnd.
+    m20 = by_name["m20"].split()
+    assert [t.lower() for t in m20[1:5]] == ["vbiasnd", "net16", "vdd", "vdd"]
+    # m18 must absorb m18s's D -> voutp.
+    m18 = by_name["m18"].split()
+    assert [t.lower() for t in m18[1:5]] == ["voutp", "net27", "vdd", "vdd"]
+    # The internal stack nets must not appear on any MOS device line; they
+    # are absorbed by the merge. (They may still appear in pass-through
+    # comments, which are not in `lines`.)
+    for ml in lines:
+        toks = [t.lower() for t in ml.split()[1:5]]
+        assert "m20stack" not in toks
+        assert "m18stack" not in toks
+
+
+def test_telescopic_ota_no_merges():
+    """Telescopic OTA cascodes share an internal D-S net but have DIFFERENT
+    gates -- must NOT be merged. The existing golden test depends on this."""
+    text = OTA_USER_SP.read_text()
+    subckts = _parse_subckts(text.splitlines())
+    assert len(subckts) == 1
+    dropped, overrides = merge_series_stacks(subckts[0])
+    assert dropped == set()
+    assert overrides == {}
 
 
 def _all_tests():
