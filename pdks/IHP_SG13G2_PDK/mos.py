@@ -120,6 +120,24 @@ class MOSGenerator(DefaultCanvas):
         self.pc = self.addGen( Wire( 'pc', 'Pc', 'h',
                                          clg=UncoloredCenterLineGrid( pitch=self.pdk['M2']['Pitch'], width=self.pdk['Pc']['PcWidth'], offset=self.pdk['M2']['Pitch']),
                                          spg=EnclosureGrid( pitch=unitCellLength, offset=offset*self.shared_diff, stoppoint=stoppoint-offset*self.shared_diff, check=True)))
+        # GatPoly horizontal strap at Pc Y level. Bridges inter-poly gaps within
+        # the device's gate region so GatPoly fully encloses the Pc ContBar by
+        # CntB_d = 0.07 um (IHP rule 5.15 CntB.d). Side effect: closes CntB.g
+        # (ContBar inside Activ/GatPoly) by extending GatPoly under the bar.
+        # X extends Pc by 70 nm each side; Y centered on Pc Y, width 300 nm
+        # (Pc Y + 70 nm enclosure each side). Sits inside the existing poly
+        # endcap Y range and merges with the vertical poly fingers.
+        gatpoly_cnt_encl = 70  # IHP CntB_d / Cnt_d = 0.07 um; GatPoly enclosure of (Cont)Bar
+        pl_strap_stoppoint = stoppoint - gatpoly_cnt_encl
+        self.pl_strap = self.addGen( Wire( 'pl_strap', 'Poly', 'h',
+                                         clg=UncoloredCenterLineGrid( pitch=self.pdk['M2']['Pitch'], width=self.pdk['Pc']['PcWidth']+140, offset=self.pdk['M2']['Pitch']),
+                                         spg=EnclosureGrid( pitch=unitCellLength, offset=offset*self.shared_diff, stoppoint=pl_strap_stoppoint-offset*self.shared_diff, check=False)))
+        # NOTE: CntB.h (ContBar must be covered by M1) would also benefit from a
+        # horizontal M1 strap at this Y, but ALIGN's canvas remove_duplicates
+        # DIFFERENT WIDTH check (per-X-centerline width consistency on M1)
+        # rejects a wide M1 rect colocated with the gate_x vertical M1 stub.
+        # CntB.h is deferred to Phase Q3 (will require either skip-list edit
+        # or a per-poly Pc restructure with new offset-240 M1 generators).
 
         self.nselect = self.addGen( Region( 'nselect', 'Nselect',
                                             v_grid=UncoloredCenterLineGrid( offset= 0, pitch= self.pdk['M3']['Pitch'], width= self.pdk['M3']['Width']),
@@ -277,6 +295,7 @@ class MOSGenerator(DefaultCanvas):
         # Connect Gate (gate_x)
         self.addWire( self.m1_updated, None, gate_x , (grid_y1+2, -1), (grid_y1+4, 1))
         self.addWire( self.pc, None, grid_y1+1, (x,1), (x+1,-1))
+        self.addWire( self.pl_strap, None, grid_y1+1, (x,1), (x+1,-1))
         self.addVia( self.va, f'{fullname}:G', gate_x, grid_y1+2)
         self._xpins[name]['G'].append(gate_x)
 
