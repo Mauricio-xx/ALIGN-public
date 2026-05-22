@@ -405,6 +405,16 @@ class MOSGenerator(DefaultCanvas):
         names = ['M1'] if pattern == 0 else ['M1', 'M2']
         names = sorted({c[0] for mc in connections.values() for c in mc})
         self._nets = collections.defaultdict(lambda: collections.defaultdict(list)) # net:m2track:m1contacts (Updated by self._connectDevicePins)
+        # Default centroid bounds for pattern==3 (CurrentMirror / ratio_devices).
+        # The size-aware block below overrides these when len(parameters)>2 and
+        # devices differ in NFIN*NF*M. For uniform 1:1 mirrors (e.g. matched
+        # diode+mirror pair with equal sizing) the override does not fire,
+        # leaving x_left/x_right undefined; without this init the pattern==3
+        # branch in the per-cell loop raises UnboundLocalError. Symmetric
+        # B|A|B split:
+        #   x_cells=4 -> B A A B    x_cells=8 -> B B A A A A B B
+        x_left = x_cells // 4
+        x_right = x_cells - x_cells // 4
         ### Needs to be generalized
         if len(parameters) > 2:
             device_name_all = [*parameters.keys()]
