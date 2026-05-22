@@ -475,7 +475,11 @@ class MOSGenerator(DefaultCanvas):
 
         self._addMOSArray(x_cells, y_cells, pattern, vt_type, connections, **parameters)
 
-        #####   Nselect Placement   #####
+        # Nselect Region serves as the ALIGN-internal cell boundary marker for
+        # NMOS arrays. Mapped in layers.json to GDS 199.0 which IHP foundry
+        # tools (LVS/DRC) do not interpret. Avoid GDS 7.0 (nSD) because IHP
+        # LVS treats nSD as a special-device marker (mos_exclude in
+        # mos_derivations.lvs) which would suppress standard NMOS extraction.
         M3_tracks_end = ceil((x_cells*self.gatesPerUnitCell+2*self.gateDummy*self.shared_diff)*self.pdk['M1']['Pitch']/self.pdk['M3']['Pitch'])
         M3_tracks_start = ceil(self.pdk['M1']['Pitch']/self.pdk['M3']['Pitch'])
 
