@@ -317,3 +317,20 @@ Branch: feature/ihp_sg13g2_pdk
 - 2026-05-23: Files modified: layers.json (1 field: activebWidth_H 300->460), mos.py (addNMOSArray, addPMOSArray, new _setRegionBbox). No align/ core touched.
 - 2026-05-23: DRC progression: 1,394 -> 866 -> 687 -> 452 -> 38 -> **0** = 100% reduction across Q1-Q7. All 4 circuits DRC-CLEAN in prototype mode. Density rules deferred to Q_signoff.
 - Checkpoint: .claude/checkpoints/sg13g2-phase-Q7-done.md.
+
+## Phase Q_signoff - Density fill tooling (DONE, full DoD)
+- 2026-05-23: Phase Q_signoff scope: create density-fill wrapper wrapping IHP's production filler macros. Close the 9 deferred density rules (AFil.g, GFil.g, M1-M5.j, TM1.c, TM2.c).
+- 2026-05-23: Key insight: IHP filler macros compute fill area as `EdgeSeal.holes` (inner contour of ring on GDS 39/0). ALIGN GDS files have no EdgeSeal. Solution: inject synthetic ring-shaped EdgeSeal around top-cell bbox, run filler, strip EdgeSeal from output.
+- 2026-05-23: EdgeSeal must be a RING polygon (outer - inner), not a solid box. `.holes` in DRC-DSL returns the inner contour of ring-shaped polygons; a solid box has no holes and produces empty fill area.
+- 2026-05-23: Created `pdks/IHP_SG13G2_PDK/tools/sg13g2_fill.sh` (bash wrapper, 3-step: inject -> fill -> strip) + `_fill_helper.py` (klayout batch helper for EdgeSeal inject/strip). Usage: `sg13g2_fill.sh [--margin UM] [--no-activ] [--no-metal] [--no-topmetal] <in.gds> <out.gds>`.
+- 2026-05-23: Filler requires `-n sg13g2 -zz` mode (not `-b`). DRC-DSL macros need virtual main window for `CellView.active()`. KLAYOUT_HOME isolation via tmpdir avoids multi-tech conflicts.
+- 2026-05-23: Validated on telescopic_ota with --margin 50: 14 fill cell types created (Act/GatP/Met1-5_M/S/TM1/TM2_FILL_CELL), 528 instances, file 57KB->85KB.
+- 2026-05-23: Density results: Activ 42.28% (min 35%), GatPoly 25.71% (min 15%), M1 45.91%, M2 46.04%, M3 40.94%, M4 39.00%, M5 39.08% (all min 35%, max 60%), TM1 40.31%, TM2 40.31% (min 25%, max 70%). ALL 9 density rules PASS.
+- 2026-05-23: Fill geometry rules (AFil.*, GFil.*, MxFil.*, TMxFil.*): 0 errors. Fill cells are DRC-legal.
+- 2026-05-23: Convention documented: density is a chip-level concern. Block-level DRC uses `--mode prototype` (0 errors). Chip-level: run fill with appropriate margin, then `--mode maximal`.
+- 2026-05-23: Mock PDK firewall: 22 passed, 731 skipped, 0 failed.
+- 2026-05-23: align/, PlaceRouteHierFlow/, PnR.so, Mock PDKs, examples, layers.json, mos.py NOT touched. 2 new files: sg13g2_fill.sh + _fill_helper.py.
+- 2026-05-23: Phase Q_signoff full DoD (4/4): fill tool created + validated, 0 density errors with fill, 0 fill geometry errors, Mock firewall green.
+- 2026-05-23: All 24 original DRC families now addressed: 15 geometric -> 0 (Q2-Q7), 9 density -> 0 (Q_signoff with fill tool).
+- 2026-05-23: Remaining deuda: (1) Docker image rebuild, (2) Mock PDK harmonisation, (3) symmetric OTA C++ ILP, (4) router cleanup, (5) AspectRatio auto-relax, (6) translator nested-subckt, (7) pytest scaffold for SG13G2.
+- Checkpoint: .claude/checkpoints/sg13g2-phase-Q-signoff-done.md.
