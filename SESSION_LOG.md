@@ -273,3 +273,19 @@ Branch: feature/ihp_sg13g2_pdk
 - 2026-05-23: Phase Q4 full DoD (4/4): V1.c1->0 (primary, 235 errors closed); Mock firewall green; 4-circuit LVS PASS; no new DRC rule families.
 - 2026-05-23: Phase Q+ deuda (ranked, post-Q4 bucket = 452 errors, 9 families): (Q5) Cnt.c 195 + Cnt.f 176 -- contact-stack retrofit. (Q6) M3.b 39 -- engine-side M3.Pitch audit. (Q7) pSD.a/b/g + NW.a/b + Act.d 38 errors -- PMOS region drawing. (Q_signoff) Density family fill-cell. Carryover: Docker image rebuild, Mock harmonisation, symmetric OTA, router cleanup, AspectRatio auto-relax, translator nested-subckt, pytest scaffold.
 - Checkpoint: .claude/checkpoints/sg13g2-phase-Q4-done.md.
+
+## Phase Q5 - Cnt.c + Cnt.f closure via contact-stack + pitch retrofit (DONE, full DoD)
+- 2026-05-23: Phase Q5 scope: close Cnt.c (195 errors, Active enclosure of Cont) + Cnt.f (176 errors, Cont-on-Active space to GatPoly) = 371 errors, 82% of remaining Q4 bucket.
+- 2026-05-23: Rule analysis -- Cnt.c (5_14_cont.drc): `cont_nsvaricap.enclosed(act, 0.07.um, euclidian)`. Active must enclose each V0 contact (Cont_SQ) by >= 70nm. S/D contacts used V0.VencA_L=50nm as Active inset. Body contacts centered in activeb of width 280nm: encl=(280-160)/2=60nm.
+- 2026-05-23: Rule analysis -- Cnt.f (sg13g2_maximal.drc:2261-2263): `Cont_Act.ext_not(SVaricap).ext_separation(GP_Nsram, 0.11.um)`. V0 contacts on Active must be >= 110nm from GatPoly edge. Space = (Poly.Pitch-Poly.Width)/2 - V0.WidthX/2 = (480-130)/2 - 80 = 95nm < 110nm.
+- 2026-05-23: IHP PyCell reference (nmos_code.py): contacted_poly_pitch = cont_size + 2*Cnt_f + L = 0.16 + 2*0.11 + L = 0.38+L. At L=0.13um: 510nm. ALIGN dynamic formula: base_pitch + (L - Poly.Width) = 510 + (L-130) = 380+L. Exact match with IHP PyCell.
+- 2026-05-23: layers.json changes (6 fields): Poly.Pitch 480->510, Poly.Offset 240->255, M1.Pitch 480->510, V0.VencA_L 50->70, Active.activebWidth 280->300, Active.activebWidth_H 280->300.
+- 2026-05-23: Cross-checks: M1 space=510-210=300nm >= M1.b(180nm). V1 space=510-190=320nm >= V1.b(220nm). V0 space=510-160=350nm >= V0.b(180nm). Body contact Active encl=(300-160)/2=70nm. S/D contact Active encl = V0.VencA_L = 70nm. Cont-to-poly space = (510-130)/2 - 80 = 110nm.
+- 2026-05-23: No mos.py changes needed -- all parameters data-driven from layers.json.
+- 2026-05-23: Mock PDK firewall (Docker): 22 passed, 731 skipped, 0 failed. All changes are SG13G2-local in layers.json.
+- 2026-05-23: DRC prototype mode on 9 unique X2_Y1 primitives: 9 errors total (Act.d=8, M3.b=1). Cnt.c 195->0 (CLOSED). Cnt.f 176->0 (CLOSED). No new DRC rule families introduced. pSD/NW families from Q4 bucket not present in Q5 test set.
+- 2026-05-23: LVS netlist extraction on 4 primitives (NMOS_S, PMOS_S, DCL_PMOS_S, DP_NMOS_B): all OK, 0 errors.
+- 2026-05-23: align/, PlaceRouteHierFlow/, PnR.so, Mock PDKs, examples, mos.py NOT touched. 1 file modified: pdks/IHP_SG13G2_PDK/layers.json (6 fields).
+- 2026-05-23: Phase Q5 full DoD (4/4): Cnt.c->0 + Cnt.f->0 (371 errors closed); Mock firewall 22/731/0; LVS extraction PASS x4; no new DRC rule families.
+- 2026-05-23: Phase Q+ deuda (ranked, post-Q5): (Q6) M3.b -- M3 space=480-290=190nm < M3.b(200nm). (Q7) Act.d + pSD/NW -- PMOS region drawing. (Q_signoff) Density family fill-cell. Carryover: Docker image rebuild, Mock harmonisation, symmetric OTA, router cleanup, AspectRatio auto-relax, translator nested-subckt, pytest scaffold.
+- Checkpoint: .claude/checkpoints/sg13g2-phase-Q5-done.md.

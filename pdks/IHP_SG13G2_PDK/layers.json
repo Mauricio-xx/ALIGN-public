@@ -34,12 +34,12 @@
                 "Draw": 0
             },
             "Direction": "V",
-            "Pitch": 480,
+            "Pitch": 510,
             "Width": 130,
             "MinL": 600,
             "MaxL": null,
             "EndToEnd": 220,
-            "Offset": 240,
+            "Offset": 255,
             "UnitC": {
                 "L_3Sigma": 0.16,
                 "Mean": 0.2,
@@ -70,8 +70,8 @@
             "EndToEnd": null,
             "Offset": 0,
             "active_enclosure": 70,
-            "activebWidth": 280,
-            "activebWidth_H": 280,
+            "activebWidth": 300,
+            "activebWidth_H": 300,
             "activePolyExTracks": 2
         },
         {
@@ -85,7 +85,7 @@
             },
             "Direction": "V",
             "Color": [],
-            "Pitch": 480,
+            "Pitch": 510,
             "Width": 210,
             "MinL": 200,
             "MaxL": null,
@@ -121,7 +121,7 @@
             "SpaceY": 180,
             "WidthX": 160,
             "WidthY": 160,
-            "VencA_L": 50,
+            "VencA_L": 70,
             "VencA_H": 50,
             "VencP_L": 0,
             "VencP_H": 0,
