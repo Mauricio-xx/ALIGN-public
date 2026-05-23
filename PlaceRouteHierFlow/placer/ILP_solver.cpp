@@ -67,7 +67,7 @@ ILP_solver::ILP_solver(design& mydesign, PnRDB::hierNode& node) {
   LL.x = INT_MAX;
   LL.y = INT_MAX;
   UR.x = INT_MIN;
-  UR.x = INT_MIN;
+  UR.y = INT_MIN;
   Blocks.resize(mydesign.Blocks.size());
   Aspect_Ratio_weight = mydesign.Aspect_Ratio_weight;
   // first correct global placement result
@@ -1777,7 +1777,7 @@ bool ILP_solver::FrameSolveILPCore(const design& mydesign, const SeqPair& curr_s
   const unsigned N_area_x = N_var - 2;
   const unsigned N_area_y = N_var - 1;
 
-  ILPSolverIf solverif(solvertouse == SYMPHONY  ? SOLVER_ENUM::SYMPHONY : SOLVER_ENUM::Cbc);
+  ILPSolverIf solverif;
   const double infty{solverif.getInfinity()};
   // set integer constraint, H_flip and V_flip can only be 0 or 1
   std::vector<int> rowindofcol[N_var];
@@ -2557,11 +2557,7 @@ bool ILP_solver::FrameSolveILPCore(const design& mydesign, const SeqPair& curr_s
     }
     PlacerHyperparameters hyper;
     solverif.setTimeLimit(std::max(hyper.ILP_runtime_limit, static_cast<int>(Blocks.size())));
-    if (solvertouse == SYMPHONY) {
-      solverif.loadProblemSym(N_var, (int)rhs.size(), starts.data(), indices.data(),
-          values.data(), collb.data(), colub.data(),
-          intvars.data(), objective.data(), sens.data(), rhs.data());
-    } else if (solvertouse == CBC) {
+    if (solvertouse == SYMPHONY || solvertouse == CBC) {
       double rhslb[rhs.size()], rhsub[rhs.size()];
       for (unsigned i = 0;i < sens.size(); ++i) {
         switch (sens[i]) {
@@ -2948,7 +2944,7 @@ double ILP_solver::GenerateValidSolution(const design& mydesign, const SeqPair& 
   area_norm = area * 0.1 / mydesign.GetMaxBlockAreaSum();
   // calculate ratio
   // ratio = std::max(double(UR.x - LL.x) / double(UR.y - LL.y), double(UR.y - LL.y) / double(UR.x - LL.x));
-  ratio = double(UR.x) / double(UR.y);
+  ratio = double(UR.x - LL.x) / double(UR.y - LL.y);
   if (ratio < Aspect_Ratio[0] || ratio > Aspect_Ratio[1]) {
     ++const_cast<design&>(mydesign)._infeasAspRatio;
     return -1;

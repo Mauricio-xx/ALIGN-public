@@ -1,14 +1,9 @@
 .subckt telescopic_ota_sg13g2 vbiasn vbiasp1 vbiasp2 vinn vinp voutn voutp id vdd 0
-* All devices uniformly sized at NF=4 M=1, W=560n (fin=W/active_pitch=2). The
-* Phase G fix in pdks/IHP_SG13G2_PDK/mos.py (_connectNets strap-end pitch math)
-* removed the multi-tile via-outside-metal issue that earlier required nf=2.
-* nf=4 was chosen over nf=2 so each primitive ships with both a tall X1_Y2 and
-* a wide X2_Y1 shape variant (CMC_S_* near-square), giving the placer more
-* options. End-to-end schematic2layout still stops in the C++ ILP placer
-* (PnR.placer.Placer.PlacementCoreAspectRatio_ILP infeasibility, see Phase H
-* checkpoint); fixing that is upstream of pdks/ and tracked as Phase I deuda.
-* Sizing is symbolic; this example exercises topology + primitive generation,
-* not analog performance.
+* All devices uniformly sized at NF=4 M=1, W=560n. nf=4 gives the placer
+* both a tall X1_Y2 and wide X2_Y1 shape variant per primitive.
+* Explicit V-axis SymmetricBlocks in .const.json define the 5 differential
+* pairs for proper analog symmetry. Sizing is symbolic; this example
+* exercises topology + primitive generation, not analog performance.
 m1 id id 0 0 nmos_rvt w=560e-9 l=130e-9 nf=4 m=1
 m2 net10 id 0 0 nmos_rvt w=560e-9 l=130e-9 nf=4 m=1
 m5 voutn vbiasn net8 0 nmos_rvt w=560e-9 l=130e-9 nf=4 m=1

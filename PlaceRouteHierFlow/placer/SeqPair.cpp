@@ -607,13 +607,11 @@ void SeqPair::SameSelected(design& caseNL) {
     int id = selected[*group.begin()];
     for (const auto& i : group) selected[i] = id;
   }
-  /**
   for(const auto& group:caseNL.SPBlocks){
     for(const auto& p:group.sympair){
       selected[p.second] = selected[p.first];
     }
   }
-  **/
 }
 
 int SeqPair::GetBlockSelected(int blockNo) {
@@ -662,9 +660,9 @@ bool SeqPair::ChangeSelectedBlock(design& caseNL) {
   }
   int newsel = caseNL.rand() % caseNL.Blocks.at(anode).size();
   selected.at(anode) = newsel;
-  // if(caseNL.GetBlockCounterpart(anode)!=-1) {
-  // selected.at( caseNL.GetBlockCounterpart(anode) )=newsel;
-  //}
+  if(caseNL.GetBlockCounterpart(anode)!=-1) {
+    selected.at( caseNL.GetBlockCounterpart(anode) )=newsel;
+  }
   return true;
 }
 
