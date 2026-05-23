@@ -55,6 +55,9 @@ pycharm/
 **/work/
 **/Results/
 .tmp_runs/
+1_topology/
+2_primitives/
+3_pnr/
 **/LOG/
 **/test_PnR
 **/_cmake.py
