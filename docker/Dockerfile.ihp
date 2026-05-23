@@ -1,0 +1,5 @@
+FROM darpaalign/align-public:latest
+
+COPY align/cmdline.py /usr/local/lib/python3.10/dist-packages/align/cmdline.py
+
+WORKDIR /work

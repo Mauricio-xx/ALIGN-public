@@ -334,3 +334,20 @@ Branch: feature/ihp_sg13g2_pdk
 - 2026-05-23: All 24 original DRC families now addressed: 15 geometric -> 0 (Q2-Q7), 9 density -> 0 (Q_signoff with fill tool).
 - 2026-05-23: Remaining deuda: (1) Docker image rebuild, (2) Mock PDK harmonisation, (3) symmetric OTA C++ ILP, (4) router cleanup, (5) AspectRatio auto-relax, (6) translator nested-subckt, (7) pytest scaffold for SG13G2.
 - Checkpoint: .claude/checkpoints/sg13g2-phase-Q-signoff-done.md.
+
+## Phase Docker - Image rebuild with cmdline.py fix baked in (DONE, full DoD)
+- 2026-05-23: Phase Docker scope: eliminate the Phase O overlay hack by building a Docker image that bakes the --skipGDS cmdline.py fix into the installed package.
+- 2026-05-23: Approach chosen: thin overlay on `darpaalign/align-public:latest` (ubuntu:22.04, Python 3.10, align 0.9.8). Only `align/cmdline.py` changed in core align/ (Phase O fix, +2/-1 lines). Full C++ rebuild (20-30 min) unnecessary for a 2-line Python fix.
+- 2026-05-23: Created `docker/Dockerfile.ihp` (3 lines: FROM + COPY cmdline.py + WORKDIR). Created `docker/build-ihp.sh` (build convenience script with usage docs). Image tag: `align-ihp:latest`.
+- 2026-05-23: Build time: <2 seconds (single COPY layer on cached base).
+- 2026-05-23: Validation 1 -- skipGDS fix baked in: grep confirms `action='store_true'` at line 125 inside the image.
+- 2026-05-23: Validation 2 -- Mock PDK firewall: 22 passed, 731 skipped, 0 failed (`docker run --rm -v $PWD:/work -w /work -e ALIGN_WORK_DIR=/tmp/align_work align-ihp:latest pytest tests/pdks/`).
+- 2026-05-23: Validation 3 -- end-to-end schematic2layout on inverter_v1_sg13g2 WITHOUT overlay hack: GDS produced (16212 B), placement + routing clean, 3 placement solutions.
+- 2026-05-23: Validation 4 -- LVS on Docker-generated GDS: PASS, 0 errors, 0 warnings, 2.747s.
+- 2026-05-23: Validation 5 -- DRC prototype on Docker-generated GDS: 0 violations.
+- 2026-05-23: Root-ownership note: Docker runs as root by default. Run with `--user $(id -u):$(id -g)` to avoid root-owned output files. Documented in build-ihp.sh header.
+- 2026-05-23: New usage (no overlay): `docker run --rm --user $(id -u):$(id -g) -v $PWD:/work -w /work align-ihp:latest schematic2layout.py examples/inverter_v1_sg13g2 -p pdks/IHP_SG13G2_PDK -w /work/.tmp_runs/output`
+- 2026-05-23: align/, PlaceRouteHierFlow/, PnR.so, Mock PDKs, examples, mos.py, layers.json NOT touched. 2 new files: docker/Dockerfile.ihp, docker/build-ihp.sh.
+- 2026-05-23: Phase Docker full DoD (5/5): image built, skipGDS fix verified, Mock firewall green, end-to-end GDS+LVS+DRC without overlay, usage documented.
+- 2026-05-23: Remaining deuda: (1) Mock PDK harmonisation, (2) symmetric OTA C++ ILP, (3) router cleanup, (4) AspectRatio auto-relax, (5) translator nested-subckt, (6) pytest scaffold for SG13G2.
+- Checkpoint: .claude/checkpoints/sg13g2-phase-docker-done.md.
