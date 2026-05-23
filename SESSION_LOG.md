@@ -289,3 +289,31 @@ Branch: feature/ihp_sg13g2_pdk
 - 2026-05-23: Phase Q5 full DoD (4/4): Cnt.c->0 + Cnt.f->0 (371 errors closed); Mock firewall 22/731/0; LVS extraction PASS x4; no new DRC rule families.
 - 2026-05-23: Phase Q+ deuda (ranked, post-Q5): (Q6) M3.b -- M3 space=480-290=190nm < M3.b(200nm). (Q7) Act.d + pSD/NW -- PMOS region drawing. (Q_signoff) Density family fill-cell. Carryover: Docker image rebuild, Mock harmonisation, symmetric OTA, router cleanup, AspectRatio auto-relax, translator nested-subckt, pytest scaffold.
 - Checkpoint: .claude/checkpoints/sg13g2-phase-Q5-done.md.
+
+## Phase Q6 - M3.b closure via M3.Pitch realignment (DONE, full DoD)
+- 2026-05-23: Phase Q6 scope: close M3.b (Metal3 minimum spacing) across all 4 circuits.
+- 2026-05-23: Rule analysis: M3.b (5_17_metaln.drc) = min M3 space >= 0.21um = 210nm (from sg13g2_tech_default.json Mn_b=0.21). Previous: M3.Pitch=480, M3.Width=290, space=190nm < 210nm.
+- 2026-05-23: Note: Q5 checkpoint said "M3.b(200nm)" but actual IHP rule is 210nm. The 200nm figure was from Phase I's approximation using generic M_b=0.18um; the width-independent Mn_b=0.21um in the tech file is the real constraint.
+- 2026-05-23: Fix: M3.Pitch 480 -> 510 in layers.json. Space = 510-290 = 220nm >= 210nm. Restores M3/M1 grid alignment (both 510nm) that Phase I established (both 480nm) and Q5 broke (M1->510 alone).
+- 2026-05-23: Q1 had attempted M3.Pitch=500 (with M1.Pitch=480 at the time) and it broke with off-grid errors due to M3/M1 mismatch. Now M3=M1=510, no mismatch.
+- 2026-05-23: mos.py:419 `M3.Pitch == M1.Pitch` check fires (simple/legacy branch) at L=130nm (minimum). At L>130nm, dynamic M1.Pitch > M3.Pitch triggers the Phase G else-branch (full-row M2 extension). Same behavior pattern as Phase I.
+- 2026-05-23: Cross-checks: V2 enclosure = (290-190)/2 = 50nm = VencA (unchanged). V3 space = 510-190 = 320nm >= 220nm. Cap.m3Pitch (560) untouched (independent, cap.py/res.py).
+- 2026-05-23: Regenerated 4 circuit GDSes via Docker schematic2layout with Phase O cmdline.py overlay: inverter (16212 B), common_source (14220 B), telescopic_ota (62998 B), current_mirror_ota (41144 B).
+- 2026-05-23: DRC prototype mode across 4 GDSes: 38 errors total (Q4: 452, Q5+Q6 delta = -414 = 91.6%). M3.b 39->0 (CLOSED, primary target). pSD.g 4->0 (CLOSED, bonus). Inverter: 0 errors (DRC-CLEAN). Common source: 0 errors (DRC-CLEAN). Remaining: telescopic=16 (Act.d=4, pSD.a=4, pSD.b=8), cmcota=22 (pSD.a=6, pSD.b=12, NW.a=2, NW.b=2). 4 rule families remain.
+- 2026-05-23: Mock PDK firewall (Docker): 22 passed, 731 skipped, 0 failed. M3.Pitch change is SG13G2-local in layers.json.
+- 2026-05-23: 4-circuit LVS regression: inverter PASS, common_source PASS, telescopic_ota PASS, current_mirror_ota PASS. All 0 errors / 0 warnings.
+- 2026-05-23: align/, PlaceRouteHierFlow/, PnR.so, Mock PDKs, examples, mos.py NOT touched. 1 file modified: pdks/IHP_SG13G2_PDK/layers.json (1 field: M3.Pitch 480->510).
+- 2026-05-23: Phase Q6 full DoD (4/4): M3.b->0 across 4 GDSes; Mock firewall 22/731/0; 4-circuit LVS PASS; no new DRC rule families. Bonus: pSD.g->0.
+- 2026-05-23: Phase Q+ deuda (ranked, post-Q6 bucket = 38 errors, 4 families): (Q7) pSD.a/b=30 + NW.a/b=4 + Act.d=4 -- PMOS region drawing (telescopic + cmcota only). (Q_signoff) Density family fill-cell. Carryover: Docker image rebuild, Mock harmonisation, symmetric OTA, router cleanup, AspectRatio auto-relax, translator nested-subckt, pytest scaffold.
+- Checkpoint: .claude/checkpoints/sg13g2-phase-Q6-done.md.
+
+## Phase Q7 - PMOS region drawing (pSD/NW/Act.d) closure (DONE)
+- 2026-05-23: Target: close remaining 38 DRC errors across 4 families (pSD.a=10, pSD.b=20, Act.d=4, NW.a=2, NW.b=2). All in PMOS region drawing (telescopic_ota + current_mirror_ota only).
+- 2026-05-23: Root cause: inter-cell corner contacts. When PnR places cells at staggered positions, Pselect/Nwell regions touch at single corner points (zero-width junctions). Fix: extend regions beyond cell bbox for overlap at junctions; decouple bbox from region extent via pre-setting self.bbox (computeBbox is no-op when bbox is not None).
+- 2026-05-23: Act.d root cause: body contact Active was 300x300nm = 0.09um^2 < Act.d threshold 0.122um^2. Fix: activebWidth_H 300->460 in layers.json. Area = 300*460 = 0.138um^2.
+- 2026-05-23: Region padding: pselect/nselect +1 M3 track (510nm) + 1 fin track (280nm) per side. NWell same. Bbox set from unpadded region extent via _setRegionBbox() helper.
+- 2026-05-23: NBL.b regression found during validation: NWell +2 fin tracks brought adjacent NWells closer than 1.5um. Reduced to +1 fin track. Final: 0 violations.
+- 2026-05-23: Mock PDK: 22/731/0. DRC: 0 errors across all 4 circuits (ALL DRC-CLEAN). LVS: 4/4 PASS.
+- 2026-05-23: Files modified: layers.json (1 field: activebWidth_H 300->460), mos.py (addNMOSArray, addPMOSArray, new _setRegionBbox). No align/ core touched.
+- 2026-05-23: DRC progression: 1,394 -> 866 -> 687 -> 452 -> 38 -> **0** = 100% reduction across Q1-Q7. All 4 circuits DRC-CLEAN in prototype mode. Density rules deferred to Q_signoff.
+- Checkpoint: .claude/checkpoints/sg13g2-phase-Q7-done.md.

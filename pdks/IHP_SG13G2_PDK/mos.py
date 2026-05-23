@@ -525,6 +525,18 @@ class MOSGenerator(DefaultCanvas):
             self._connectDevicePins(y, y_cells, connections)
         self._connectNets(x_cells, y_cells)
 
+    def _setRegionBbox(self, M3_tracks_start, M3_tracks_end, y_top):
+        """Set bbox from the unpadded region extent so the PnR places cells
+        based on the functional boundary.  The padded implant/well regions
+        intentionally extend beyond the bbox to create overlap at inter-cell
+        junctions, preventing zero-width pSD/NWell corner contacts."""
+        from align.cell_fabric import transformation
+        x0 = self.nselect.physical_x(-M3_tracks_start)
+        y0 = self.nselect.physical_y(0)
+        x1 = self.nselect.physical_x(M3_tracks_end)
+        y1 = self.nselect.physical_y(y_top)
+        self.bbox = transformation.Rect(x0, y0, x1, y1)
+
     def addNMOSArray( self, x_cells, y_cells, pattern, vt_type, connections, **parameters):
 
         self._addMOSArray(x_cells, y_cells, pattern, vt_type, connections, **parameters)
@@ -537,8 +549,13 @@ class MOSGenerator(DefaultCanvas):
         M3_tracks_end = ceil((x_cells*self.gatesPerUnitCell+2*self.gateDummy*self.shared_diff)*self.pdk['M1']['Pitch']/self.pdk['M3']['Pitch'])
         M3_tracks_start = ceil(self.pdk['M1']['Pitch']/self.pdk['M3']['Pitch'])
 
-        self.addRegion( self.nselect, None, -M3_tracks_start, 0, M3_tracks_end, y_cells* self.finsPerUnitCell)
-        if self.bodyswitch==1:self.addRegion( self.pselect, None, -M3_tracks_start, y_cells* self.finsPerUnitCell, M3_tracks_end, y_cells* self.finsPerUnitCell+self.bodyswitch*self.lFin)
+        y_top = y_cells * self.finsPerUnitCell + self.bodyswitch * self.lFin
+
+        self.addRegion( self.nselect, None, -(M3_tracks_start+1), -1, M3_tracks_end+1, y_cells* self.finsPerUnitCell+1)
+        if self.bodyswitch==1:
+            self.addRegion( self.pselect, None, -(M3_tracks_start+1), y_cells* self.finsPerUnitCell-1, M3_tracks_end+1, y_cells* self.finsPerUnitCell+self.bodyswitch*self.lFin+1)
+
+        self._setRegionBbox(M3_tracks_start, M3_tracks_end, y_top)
 
     def addPMOSArray( self, x_cells, y_cells, pattern, vt_type, connections, **parameters):
 
@@ -548,8 +565,13 @@ class MOSGenerator(DefaultCanvas):
         M3_tracks_end = ceil((x_cells*self.gatesPerUnitCell+2*self.gateDummy*self.shared_diff)*self.pdk['M1']['Pitch']/self.pdk['M3']['Pitch'])
         M3_tracks_start = ceil(self.pdk['M1']['Pitch']/self.pdk['M3']['Pitch'])
 
-        self.addRegion( self.pselect, None, -M3_tracks_start, 0, M3_tracks_end, y_cells* self.finsPerUnitCell)
-        if self.bodyswitch==1:self.addRegion( self.nselect, None, -M3_tracks_start, y_cells* self.finsPerUnitCell, M3_tracks_end, y_cells* self.finsPerUnitCell+self.bodyswitch*self.lFin)
-        self.addRegion( self.nwell, None, -M3_tracks_start, 0, M3_tracks_end, y_cells* self.finsPerUnitCell+self.bodyswitch*self.lFin)
+        y_top = y_cells * self.finsPerUnitCell + self.bodyswitch * self.lFin
+
+        self.addRegion( self.pselect, None, -(M3_tracks_start+1), -1, M3_tracks_end+1, y_cells* self.finsPerUnitCell+1)
+        if self.bodyswitch==1:
+            self.addRegion( self.nselect, None, -(M3_tracks_start+1), y_cells* self.finsPerUnitCell-1, M3_tracks_end+1, y_cells* self.finsPerUnitCell+self.bodyswitch*self.lFin+1)
+        self.addRegion( self.nwell, None, -(M3_tracks_start+1), -1, M3_tracks_end+1, y_top+1)
+
+        self._setRegionBbox(M3_tracks_start, M3_tracks_end, y_top)
 
 
