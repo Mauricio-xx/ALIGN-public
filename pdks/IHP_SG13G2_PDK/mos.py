@@ -115,29 +115,32 @@ class MOSGenerator(DefaultCanvas):
                                       clg=UncoloredCenterLineGrid( pitch=activePitch, width=ThickoxWidth, offset=activeOffset),
                                       spg=EnclosureGrid( pitch=unitCellLength, offset=0, stoppoint=thickoxStopPoint, check=False)))
 
-        offset = self.gateDummy*self.pdk['Poly']['Pitch']+self.pdk['Poly']['Offset'] - self.pdk['Poly']['Pitch']//2
-        stoppoint = self.gateDummy*self.pdk['Poly']['Pitch'] + self.pdk['Poly']['Offset']-self.pdk['Pc']['PcExt']-self.pdk['Poly']['Width']//2
+        # Per-poly Pc squares (160x160 each) at active poly columns. Square
+        # contacts are Cont_SQ, not ContBar, so the entire CntB rule family
+        # (CntB.d/CntB.g/CntB.h) becomes N/A.
+        pc_stoppoint = (self.pdk['Poly']['Pitch'] - self.pdk['Pc']['PcWidth']) // 2
         self.pc = self.addGen( Wire( 'pc', 'Pc', 'h',
                                          clg=UncoloredCenterLineGrid( pitch=self.pdk['M2']['Pitch'], width=self.pdk['Pc']['PcWidth'], offset=self.pdk['M2']['Pitch']),
-                                         spg=EnclosureGrid( pitch=unitCellLength, offset=offset*self.shared_diff, stoppoint=stoppoint-offset*self.shared_diff, check=True)))
-        # GatPoly horizontal strap at Pc Y level. Bridges inter-poly gaps within
-        # the device's gate region so GatPoly fully encloses the Pc ContBar by
-        # CntB_d = 0.07 um (IHP rule 5.15 CntB.d). Side effect: closes CntB.g
-        # (ContBar inside Activ/GatPoly) by extending GatPoly under the bar.
-        # X extends Pc by 70 nm each side; Y centered on Pc Y, width 300 nm
-        # (Pc Y + 70 nm enclosure each side). Sits inside the existing poly
-        # endcap Y range and merges with the vertical poly fingers.
-        gatpoly_cnt_encl = 70  # IHP CntB_d / Cnt_d = 0.07 um; GatPoly enclosure of (Cont)Bar
-        pl_strap_stoppoint = stoppoint - gatpoly_cnt_encl
+                                         spg=EnclosureGrid( pitch=self.pdk['Poly']['Pitch'], offset=0, stoppoint=pc_stoppoint, check=False)))
+
+        # Continuous horizontal GatPoly strap enclosing all per-poly Pc squares
+        # by >= 70 nm in both X and Y. Prevents Cnt.d (GatPoly encl of Cont_SQ
+        # >= 0.07 um). A per-poly pad would share X-centerlines with poly
+        # fingers and trip the DIFFERENT WIDTH canvas check; the continuous
+        # strap is centered at the unit cell midpoint, avoiding the conflict.
+        gatpoly_cnt_encl = 70
+        first_poly_center = self.pdk['Poly']['Offset'] + self.gateDummy * self.pdk['Poly']['Pitch']
+        strap_raw = first_poly_center - self.pdk['Pc']['PcWidth'] // 2 - gatpoly_cnt_encl
+        strap_offset_val = (self.gateDummy * self.pdk['Poly']['Pitch'] + self.pdk['Poly']['Offset'] - self.pdk['Poly']['Pitch'] // 2) * self.shared_diff
         self.pl_strap = self.addGen( Wire( 'pl_strap', 'Poly', 'h',
-                                         clg=UncoloredCenterLineGrid( pitch=self.pdk['M2']['Pitch'], width=self.pdk['Pc']['PcWidth']+140, offset=self.pdk['M2']['Pitch']),
-                                         spg=EnclosureGrid( pitch=unitCellLength, offset=offset*self.shared_diff, stoppoint=pl_strap_stoppoint-offset*self.shared_diff, check=False)))
-        # NOTE: CntB.h (ContBar must be covered by M1) would also benefit from a
-        # horizontal M1 strap at this Y, but ALIGN's canvas remove_duplicates
-        # DIFFERENT WIDTH check (per-X-centerline width consistency on M1)
-        # rejects a wide M1 rect colocated with the gate_x vertical M1 stub.
-        # CntB.h is deferred to Phase Q3 (will require either skip-list edit
-        # or a per-poly Pc restructure with new offset-240 M1 generators).
+                                         clg=UncoloredCenterLineGrid( pitch=self.pdk['M2']['Pitch'], width=self.pdk['Pc']['PcWidth']+2*gatpoly_cnt_encl, offset=self.pdk['M2']['Pitch']),
+                                         spg=EnclosureGrid( pitch=unitCellLength, offset=strap_offset_val, stoppoint=strap_raw-strap_offset_val, check=False)))
+
+        # Gate-column M1 at offset=Poly.Offset=240, distinct X-centerline
+        # from S/D m1_updated (offset=0) so DIFFERENT WIDTH check is N/A.
+        self.m1_gate = self.addGen( Wire( 'm1_gate', 'M1', 'v',
+                                     clg=UncoloredCenterLineGrid( pitch=self.pdk['Poly']['Pitch'], width=self.pdk['M1']['Width'], offset=self.pdk['Poly']['Offset']),
+                                     spg=EnclosureGrid( pitch=self.pdk['M2']['Pitch'], stoppoint=self.pdk['V1']['VencA_L'] + self.pdk['V1']['WidthY']//2, check=False)))
 
         self.nselect = self.addGen( Region( 'nselect', 'Nselect',
                                             v_grid=UncoloredCenterLineGrid( offset= 0, pitch= self.pdk['M3']['Pitch'], width= self.pdk['M3']['Width']),
@@ -204,6 +207,23 @@ class MOSGenerator(DefaultCanvas):
                                     v_clg=self.m1_updated.clg,
                                     WidthX=self.pdk['V0']['WidthX'],
                                     WidthY=self.pdk['V0']['WidthY']))
+
+        self.va_gate = self.addGen( Via( 'va_gate', 'V0',
+                                    h_clg=self.m2.clg,
+                                    v_clg=self.m1_gate.clg,
+                                    WidthX=self.pdk['V0']['WidthX'],
+                                    WidthY=self.pdk['V0']['WidthY']))
+
+        # h_ext includes VencA so the M2 wire from addWireAndViaSet extends
+        # past V1 by VencA_H. Without this, V1_gate centers at offset=240
+        # land exactly on m2_updated.spg legal positions (stoppoint=145),
+        # giving 0 nm M2 enclosure after snapping.
+        self.v1_gate = self.addGen( Via( 'v1_gate', 'V1',
+                                    h_clg=self.m2_updated.clg,
+                                    v_clg=self.m1_gate.clg,
+                                    WidthX=self.pdk['V1']['WidthX'],
+                                    WidthY=self.pdk['V1']['WidthY'],
+                                    h_ext=self.pdk['V1']['WidthX']//2 + self.pdk['V1']['VencA_H']))
 
         self.v0 = self.addGen( Via( 'v0', 'V0',
                                     h_clg=CenterLineGrid(),
@@ -292,12 +312,16 @@ class MOSGenerator(DefaultCanvas):
         grid_y0 = y*self.m2PerUnitCell + 1
         grid_y1 = (y+1)*self.m2PerUnitCell-5
         gate_x = self.gateDummy*self.shared_diff + x * self.gatesPerUnitCell + self.gatesPerUnitCell // 2
-        # Connect Gate (gate_x)
-        self.addWire( self.m1_updated, None, gate_x , (grid_y1+2, -1), (grid_y1+4, 1))
-        self.addWire( self.pc, None, grid_y1+1, (x,1), (x+1,-1))
+        # Per-poly gate contact: Pc square + M1_gate + V0_gate at each active
+        # poly column. Continuous GatPoly strap encloses all Pc squares.
+        # M2 strap from _connectDevicePins ties them via V1_gate.
         self.addWire( self.pl_strap, None, grid_y1+1, (x,1), (x+1,-1))
-        self.addVia( self.va, f'{fullname}:G', gate_x, grid_y1+2)
-        self._xpins[name]['G'].append(gate_x)
+        for i in range(self.gate):
+            poly_x = i + self.gatesPerUnitCell * x + self.gateDummy
+            self.addWire( self.m1_gate, None, poly_x, (grid_y1+2, -1), (grid_y1+4, 1))
+            self.addWire( self.pc, None, grid_y1+1, (poly_x, 1), (poly_x+1, -1))
+            self.addVia( self.va_gate, f'{fullname}:G', poly_x, grid_y1+2)
+            self._xpins[name]['G'].append(poly_x)
 
         # Connect Source & Drain
         (center_terminal, side_terminal) = ('S', 'D') if self.gate%4 == 0 else ('D', 'S')
@@ -338,7 +362,8 @@ class MOSGenerator(DefaultCanvas):
                     else:
                         current_track = y * self.m2PerUnitCell + len(connections) * j + diff_track
                         diff_track = diff_track + 1
-                    self.addWireAndViaSet(net, self.m2_updated, self.v1_x, current_track, contacts)
+                    via = self.v1_gate if pin == 'G' else self.v1_x
+                    self.addWireAndViaSet(net, self.m2_updated, via, current_track, contacts)
                     self._nets[net][current_track] = contacts
                 # Extend m1 if needed. TODO: Should we draw longer M1s to begin with?
                 #direction = 1 if current_track > center_track else -1
