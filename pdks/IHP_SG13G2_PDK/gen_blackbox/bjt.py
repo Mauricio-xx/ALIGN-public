@@ -53,8 +53,8 @@ _tmp = layout.create_cell("_resolve")
 _tmp.insert(pya.DCellInstArray(pcell, pya.DTrans()))
 _pcell_actual = layout.cell(_tmp.each_inst().__next__().cell_index)
 _pbb = _pcell_actual.bbox()
-dx = -(-_pbb.left // M1_PITCH) * M1_PITCH if _pbb.left < 0 else 0
-dy = -(-_pbb.bottom // M2_PITCH) * M2_PITCH if _pbb.bottom < 0 else 0
+dx = ((-_pbb.left + M1_PITCH - 1) // M1_PITCH) * M1_PITCH if _pbb.left < 0 else 0
+dy = ((-_pbb.bottom + M2_PITCH - 1) // M2_PITCH) * M2_PITCH if _pbb.bottom < 0 else 0
 
 # Clear native Pin/Label shapes from PyCell (may be off-grid)
 for _ln, _dt in [(M1_DRAW[0], PIN_DT), (M2_DRAW[0], PIN_DT),
