@@ -379,3 +379,12 @@ Branch: feature/ihp_sg13g2_pdk
 - 2026-05-24: Phase AR+Nested full DoD (4/4): AspectRatio crash fixed with documented root-cause, translator nested-subckt support implemented with tests, Mock firewall green, all pre-existing tests unaffected.
 - 2026-05-24: Remaining deuda: (1) router cleanup (dead Minlength_ViaLength_Diff), (2) pytest scaffold for SG13G2 examples.
 - Checkpoint: .claude/checkpoints/sg13g2-phase-ar-nested-done.md.
+
+## Phase Examples - 5T OTA + Strong Arm comparator (DONE, full DoD)
+- 2026-05-24: Two new SG13G2 example circuits created and validated end-to-end.
+- 2026-05-24: `examples/five_transistor_ota_sg13g2/`: 5T OTA (mn1 tail, mn2/mn3 diff pair, mp4/mp5 PMOS current mirror load). Ported from examples/five_transistor_ota_Bulk. Sizing: w=560n l=130n nf=4 m=1. schematic2layout: 4 placement solutions, routing clean. LVS: PASS 0E/0W. DRC prototype: 0 violations. GDS 28,778 B.
+- 2026-05-24: `examples/strong_arm_comp_sg13g2/`: 14T Strong Arm dynamic comparator with output buffers. Ported from examples/high_speed_comparator. Topology: mn0 tail, mn1/mn2 diff pair, mn3/mn4 + mp5/mp6 cross-coupled regeneration latch, mp7-mp10 precharge switches, mp11/mn13 + mp12/mn14 output inverters. GroupBlocks constraints for diff pair (XDP), cross-coupled NMOS (XCCN), cross-coupled PMOS (XCCP), and output inverters (XINV_P, XINV_N). schematic2layout: placement + routing clean, 6 primitives recognized. LVS: PASS 0E/0W. DRC prototype: 0 violations. GDS 102,934 B.
+- 2026-05-24: Total validated SG13G2 circuits: 6 (inverter_v1, common_source, telescopic_ota, current_mirror_ota, five_transistor_ota, strong_arm_comp). All LVS-PASS and DRC-CLEAN in prototype mode.
+- 2026-05-24: No align/ or pdks/ code changes this phase -- only new example files.
+- 2026-05-24: Remaining deuda: (1) DRC maximal mode closure (fill tool), (2) router cleanup, (3) pytest scaffold.
+- Checkpoint: .claude/checkpoints/sg13g2-phase-examples-done.md.
