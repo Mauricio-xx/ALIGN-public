@@ -37,7 +37,7 @@ from spice_to_ihp_lvs import (
 )
 
 OTA_USER_SP = REPO / "examples/telescopic_ota_sg13g2/telescopic_ota_sg13g2.sp"
-OTA_LVS_SP = REPO / "examples/telescopic_ota_sg13g2/telescopic_ota_sg13g2.lvs.sp"
+OTA_LVS_SP = REPO / "examples/telescopic_ota_sg13g2/lvs/telescopic_ota_sg13g2.lvs.sp"
 CMC_OTA_USER_SP = REPO / "examples/current_mirror_ota_sg13g2/current_mirror_ota_sg13g2.sp"
 
 

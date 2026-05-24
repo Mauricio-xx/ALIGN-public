@@ -77,11 +77,11 @@ class MOSGenerator(DefaultCanvas):
 
         self.m1_updated = self.addGen( Wire( 'm1_updated ', 'M1', 'v',
                                      clg=UncoloredCenterLineGrid( pitch=self.pdk['M1']['Pitch'], width=self.pdk['M1']['Width']),
-                                     spg=EnclosureGrid( pitch=self.pdk['M2']['Pitch'], stoppoint=self.pdk['V1']['VencA_L'] +self.pdk['M2']['Width']//2, check=False)))
+                                     spg=EnclosureGrid( pitch=self.pdk['M2']['Pitch'], stoppoint=self.pdk['V1']['VencA_L'] + self.pdk['V1']['WidthY']//2, check=False)))
 
         self.m2_updated = self.addGen( Wire( 'm2_updated ', 'M2', 'h',
                                      clg=UncoloredCenterLineGrid( pitch=self.pdk['M2']['Pitch'], width=self.pdk['M2']['Width']),
-                                     spg=EnclosureGrid( pitch=self.pdk['M1']['Pitch'], stoppoint=self.pdk['V1']['VencA_L']+self.pdk['M1']['Width']//2, check=False)))
+                                     spg=EnclosureGrid( pitch=self.pdk['M1']['Pitch'], stoppoint=self.pdk['V1']['VencA_H'] + self.pdk['V1']['WidthX']//2, check=False)))
 
         self.fin = self.addGen( Wire( 'fin', 'Fin', 'h',
                                       clg=UncoloredCenterLineGrid( pitch= self.pdk['Fin']['Pitch'], width= self.pdk['Fin']['Width'], offset= self.pdk['Fin']['Offset']),
@@ -375,6 +375,8 @@ class MOSGenerator(DefaultCanvas):
         names = ['M1'] if pattern == 0 else ['M1', 'M2']
         names = sorted({c[0] for mc in connections.values() for c in mc})
         self._nets = collections.defaultdict(lambda: collections.defaultdict(list)) # net:m2track:m1contacts (Updated by self._connectDevicePins)
+        x_left = x_cells // 4
+        x_right = x_cells - x_cells // 4
         ### Needs to be generalized
         if len(parameters) > 2:
             device_name_all = [*parameters.keys()]

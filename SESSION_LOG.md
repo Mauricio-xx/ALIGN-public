@@ -351,3 +351,19 @@ Branch: feature/ihp_sg13g2_pdk
 - 2026-05-23: Phase Docker full DoD (5/5): image built, skipGDS fix verified, Mock firewall green, end-to-end GDS+LVS+DRC without overlay, usage documented.
 - 2026-05-23: Remaining deuda: (1) Mock PDK harmonisation, (2) symmetric OTA C++ ILP, (3) router cleanup, (4) AspectRatio auto-relax, (5) translator nested-subckt, (6) pytest scaffold for SG13G2.
 - Checkpoint: .claude/checkpoints/sg13g2-phase-docker-done.md.
+
+## Phase Symmetric ILP - Symmetric OTA C++ ILP fix (DONE, full DoD)
+- 2026-05-23: Fixed 3 bugs in C++ ILP placer for symmetric constraint support (SeqPair.cpp variant matching, ILP_solver.cpp UR.y init + ratio formula). Made Symphony libs optional in ilpif.cmake. Added SymmetricBlocks constraint to telescopic OTA. E2E PASS with 5 differential pairs symmetric.
+- Checkpoint: .claude/checkpoints/sg13g2-phase-symm-ilp-progress.md.
+
+## Phase Mock-Harmonise - Mock PDK harmonisation (DONE, full DoD)
+- 2026-05-23: Scope: backport 2 IHP-discovered correctness bugs to the 3 active Mock PDKs (Bulk45nm, Bulk65nm, FinFET14nm). Nonuniform_mock_pdk has no mos.py, not affected.
+- 2026-05-23: Bug 1 (Phase J stoppoint formula): m1_updated/m2_updated EnclosureGrid stoppoints used perpendicular metal half-width instead of via half-width. m1_updated: `VencA_L + M2.Width//2` -> `VencA_L + V1.WidthY//2`. m2_updated: `VencA_L + M1.Width//2` -> `VencA_H + V1.WidthX//2`. Applied to Bulk45nm and Bulk65nm (FinFET14nm has no m1_updated/m2_updated). Bug was dormant in Mock PDKs because metal width >= via width (over-cover, still legal).
+- 2026-05-23: Bug 2 (Phase M pattern=3 default init): `_addMOSArray` left x_left/x_right undefined when pattern==3 (current mirror) with uniform device sizing (NFIN*NF*M equal). Added `x_left = x_cells // 4; x_right = x_cells - x_cells // 4` default init before the size-aware override. Applied to Bulk45nm, Bulk65nm, and FinFET14nm.
+- 2026-05-23: Phase K Nselect remap (GDS 7.0 -> 199.0) NOT harmonised: IHP-specific (LVS deck excludes nSD-covered channels). Mock PDKs have no such constraint.
+- 2026-05-23: Also fixed test_spice_to_ihp_lvs.py OTA_LVS_SP path to match the lvs/ subdirectory relocation from Phase Symmetric ILP.
+- 2026-05-23: Mock PDK firewall (Docker): 22 passed, 731 skipped, 0 failed. Host pytest: 22 passed, 731 skipped, 0 failed. Translator tests: 46/46 PASS.
+- 2026-05-23: Files modified: pdks/Bulk45nm_Mock_PDK/mos.py (+4/-2), pdks/Bulk65nm_Mock_PDK/mos.py (+4/-2), pdks/FinFET14nm_Mock_PDK/mos.py (+2/-0), pdks/IHP_SG13G2_PDK/tools/test_spice_to_ihp_lvs.py (+1/-1).
+- 2026-05-23: Phase Mock-Harmonise full DoD (4/4): 2 bugs backported to 3 Mock PDKs, Mock firewall green (Docker + host), translator tests green, no align/ core touched.
+- 2026-05-23: Remaining deuda: (1) router cleanup, (2) AspectRatio auto-relax, (3) translator nested-subckt, (4) pytest scaffold for SG13G2.
+- Checkpoint: .claude/checkpoints/sg13g2-phase-mock-harmonise-done.md.
