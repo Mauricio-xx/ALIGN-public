@@ -475,3 +475,15 @@ Branch: feature/ihp_sg13g2_pdk
   - Regression: inverter_v1_sg13g2 LVS PASS (MOS-only circuits unaffected). Mock PDK firewall: 22 passed, 803 skipped, 0 failed. Translator tests: 74/74 PASS.
   - Files modified: spice_to_ihp_lvs.py (+25/-5), test_spice_to_ihp_lvs.py (+12/-9), sg13g2_lvs.sh (+25/-2).
 - 2026-05-24: Remaining: (1) automate blackbox GDS generation, (2) commit bandgap LVS changes.
+
+## Phase AutoBBox - Automated blackbox GDS generation (DONE, full DoD)
+- 2026-05-24: Scope: automate the manual gen_blackbox step for mixed-signal circuits. Previously, users had to manually run gen_blackbox for each BJT/resistor/cap before P&R.
+- 2026-05-24: Key discovery: ALIGN's compiler wraps R/C devices in topology subcircuits (RES_2T, CAP_2T from basic_template.sp) and hashes the full subcircuit structure via FlatDict -- NOT the same as gen_key on parameters. This means primitive names like RES_2T_19160149 cannot be predicted from the SPICE alone without running ALIGN's compiler.
+- 2026-05-24: Solution: two-pass approach. Pass 1 runs ALIGN's compiler in Docker (fails at PnR without blackbox GDS, but topology output is generated). gen_all_blackboxes.py reads __primitives_library__.json to discover exact primitive names, extracts device model + parameters, generates blackbox GDS on the host via gen_blackbox. Pass 2 runs the full flow with --blackbox_dir.
+- 2026-05-24: Created `pdks/IHP_SG13G2_PDK/tools/gen_all_blackboxes.py`: discovers blackbox primitives from topology output, maps model+params to gen_blackbox CLI args, generates GDS with correct ALIGN-expected filenames.
+- 2026-05-24: Created `pdks/IHP_SG13G2_PDK/tools/sg13g2_run.sh`: end-to-end wrapper. Auto-detects mixed-signal circuits (grep for blackbox model names), runs two-pass flow for mixed-signal or single-pass for pure MOS. Handles Docker overlays, workdir setup, GDS output path reporting.
+- 2026-05-24: E2E validation on bandgap_ref_sg13g2: `sg13g2_run.sh examples/bandgap_ref_sg13g2` -> GDS produced -> LVS PASS (0 errors, 0 warnings). All fully automated, no manual gen_blackbox step.
+- 2026-05-24: E2E validation on inverter_v1_sg13g2 (pure MOS): single-pass, GDS produced.
+- 2026-05-24: Mock PDK firewall: 22 passed, 803 skipped, 0 failed. Translator tests: 74/74 PASS.
+- 2026-05-24: Files: gen_all_blackboxes.py (new), sg13g2_run.sh (new). No align/ changes.
+- 2026-05-24: Remaining deuda: (1) LDO example circuit, (2) router cleanup.
