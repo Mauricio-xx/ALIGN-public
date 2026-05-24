@@ -39,6 +39,7 @@ PIN_DT = 2
 M1_PITCH = 510
 M1_HALF_W = 105
 M2_PITCH = 560
+M2_HALF_H = 280   # M1 pin min half-height so router finds M2 grid crossings
 
 def _snap(val, pitch):
     return int(round(val / pitch)) * pitch
@@ -81,25 +82,29 @@ m1_draw_out = layout.layer(*M1_DRAW)
 m1_label_li = layout.layer(M1_DRAW[0], LABEL_DT)
 m1_pin_li   = layout.layer(M1_DRAW[0], PIN_DT)
 
-# PLUS (M1 vertical): snap shifted center_x to M1 track
+# PLUS (M1 vertical): snap center_x to M1 track, extend height for M2 grid
 p_sx = _snap(plus_box.center().x + dx, M1_PITCH)
 p_hw = max(plus_box.width() // 2, M1_HALF_W)
-p_pin = pya.Box(p_sx - p_hw, plus_box.bottom + dy, p_sx + p_hw, plus_box.top + dy)
-p_ext = pya.Box(min(plus_box.left + dx, p_pin.left), plus_box.bottom + dy,
-                max(plus_box.right + dx, p_pin.right), plus_box.top + dy)
+p_cy = (plus_box.bottom + plus_box.top) // 2 + dy
+p_hh = max((plus_box.top - plus_box.bottom) // 2, M2_HALF_H)
+p_pin = pya.Box(p_sx - p_hw, p_cy - p_hh, p_sx + p_hw, p_cy + p_hh)
+p_ext = pya.Box(min(plus_box.left + dx, p_pin.left), min(plus_box.bottom + dy, p_pin.bottom),
+                max(plus_box.right + dx, p_pin.right), max(plus_box.top + dy, p_pin.top))
 top.shapes(m1_draw_out).insert(p_ext)
 top.shapes(m1_pin_li).insert(p_pin)
-top.shapes(m1_label_li).insert(pya.Text("PLUS", pya.Trans(p_sx, plus_box.center().y + dy)))
+top.shapes(m1_label_li).insert(pya.Text("PLUS", pya.Trans(p_sx, p_cy)))
 
-# MINUS (M1 vertical): snap shifted center_x to M1 track
+# MINUS (M1 vertical): snap center_x to M1 track, extend height for M2 grid
 m_sx = _snap(minus_box.center().x + dx, M1_PITCH)
 m_hw = max(minus_box.width() // 2, M1_HALF_W)
-m_pin = pya.Box(m_sx - m_hw, minus_box.bottom + dy, m_sx + m_hw, minus_box.top + dy)
-m_ext = pya.Box(min(minus_box.left + dx, m_pin.left), minus_box.bottom + dy,
-                max(minus_box.right + dx, m_pin.right), minus_box.top + dy)
+m_cy = (minus_box.bottom + minus_box.top) // 2 + dy
+m_hh = max((minus_box.top - minus_box.bottom) // 2, M2_HALF_H)
+m_pin = pya.Box(m_sx - m_hw, m_cy - m_hh, m_sx + m_hw, m_cy + m_hh)
+m_ext = pya.Box(min(minus_box.left + dx, m_pin.left), min(minus_box.bottom + dy, m_pin.bottom),
+                max(minus_box.right + dx, m_pin.right), max(minus_box.top + dy, m_pin.top))
 top.shapes(m1_draw_out).insert(m_ext)
 top.shapes(m1_pin_li).insert(m_pin)
-top.shapes(m1_label_li).insert(pya.Text("MINUS", pya.Trans(m_sx, minus_box.center().y + dy)))
+top.shapes(m1_label_li).insert(pya.Text("MINUS", pya.Trans(m_sx, m_cy)))
 
 # Grid-align cell bounding box starting at (0,0)
 _fb = top.bbox()

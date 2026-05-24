@@ -449,5 +449,10 @@ Branch: feature/ihp_sg13g2_pdk
   - HPWL assertion downgraded to warning (placer caches HPWL before snap, read-only on hierNode).
   - Result: 0 off-grid errors (was 9). GDS produced. 5 OPEN nets remain from router failures.
 - 2026-05-24: Tests: 74/74 translator, 22/22 Mock PDK (with placer.py overlay).
-- 2026-05-24: Remaining OPEN nets: router "fail to find source/dest vertices" on 3 nets. Likely caused by PMOS mirror wide pins whose centers are between M1 tracks (inherent to MOS generator layout, not placement). Separate investigation needed.
-- 2026-05-24: Remaining: (1) router tolerance for wide off-center pins, (2) LVS validation, (3) automate blackbox GDS generation.
+- 2026-05-24: Router vertex search fix (gen_blackbox pin height):
+  - Root cause: M1 pin boxes from gen_blackbox were too narrow vertically (~260nm for resistors, ~240nm for BJTs) to guarantee containing an M2 grid crossing (M2 pitch=560nm). The router's Map_from_seg2gridseg_pin searches for grid vertices at (M1_pitch*n, M2_pitch*m) intersections within pin boxes. Pins narrower than M2_PITCH in y could miss all grid crossings depending on placement position.
+  - Fix: gen_blackbox (bjt.py, polyres.py) M1 pin boxes extended to at least M2_PITCH height (560nm). Added M1_PIN_MIN_HH and M2_HALF_H constants. Pin+Draw shapes extended symmetrically around pin center.
+  - Result: Router-Error "fail to find source/dest vertices" eliminated (0 from 3). Router successfully routes 4/5 nets (N1, N2, N3, VREF). VSS has 1 A* path-finding failure (congestion, not grid issue). LVS checker reports 5 OPEN (pre-existing connectivity issue at GDS level, not router-related).
+  - Corrected diagnosis: the issue was never PMOS mirror pins -- it was resistor/BJT M1 pin box height insufficient for router grid intersection. The router's grid vertex search requires pin extent >= adjacent-layer pitch in the perpendicular direction.
+- 2026-05-24: Tests: 74/74 translator, 22/22 Mock PDK.
+- 2026-05-24: Remaining: (1) VSS A* routing congestion, (2) LVS OPEN connectivity at GDS level, (3) automate blackbox GDS generation.

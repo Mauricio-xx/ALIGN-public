@@ -46,7 +46,7 @@ def route_single_variant( DB, drcInfo, current_node, lidx, opath, adr_mode, *, P
 
 
     DB.ExtractPinsToPowerPins(current_node)
-    
+
     h_skip_factor = DB.getDrc_info().Design_info.h_skip_factor
     v_skip_factor = DB.getDrc_info().Design_info.v_skip_factor
 

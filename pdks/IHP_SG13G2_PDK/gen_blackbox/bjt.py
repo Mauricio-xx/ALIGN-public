@@ -44,6 +44,7 @@ M1_PITCH = 510
 M2_PITCH = 560
 M1_HALF_W = 105
 M2_HALF_H = 145
+M1_PIN_MIN_HH = M2_PITCH // 2  # M1 pin min half-height so router finds M2 grid crossings
 
 def _snap(val, pitch):
     return int(round(val / pitch)) * pitch
@@ -104,25 +105,29 @@ m1_pin_li   = layout.layer(M1_DRAW[0], PIN_DT)
 m2_label_li = layout.layer(M2_DRAW[0], LABEL_DT)
 m2_pin_li   = layout.layer(M2_DRAW[0], PIN_DT)
 
-# Collector (M1 vertical): snap shifted center_x to M1 track
+# Collector (M1 vertical): snap center_x to M1 track, extend height for M2 grid
 c_sx = _snap(c_box.center().x + dx, M1_PITCH)
 c_hw = max(c_box.width() // 2, M1_HALF_W)
-c_pin = pya.Box(c_sx - c_hw, c_box.bottom + dy, c_sx + c_hw, c_box.top + dy)
-c_ext = pya.Box(min(c_box.left + dx, c_pin.left), c_box.bottom + dy,
-                max(c_box.right + dx, c_pin.right), c_box.top + dy)
+c_cy = (c_box.bottom + c_box.top) // 2 + dy
+c_hh = max((c_box.top - c_box.bottom) // 2, M1_PIN_MIN_HH)
+c_pin = pya.Box(c_sx - c_hw, c_cy - c_hh, c_sx + c_hw, c_cy + c_hh)
+c_ext = pya.Box(min(c_box.left + dx, c_pin.left), min(c_box.bottom + dy, c_pin.bottom),
+                max(c_box.right + dx, c_pin.right), max(c_box.top + dy, c_pin.top))
 top.shapes(m1_draw_out).insert(c_ext)
 top.shapes(m1_pin_li).insert(c_pin)
-top.shapes(m1_label_li).insert(pya.Text("C", pya.Trans(c_sx, c_box.center().y + dy)))
+top.shapes(m1_label_li).insert(pya.Text("C", pya.Trans(c_sx, c_cy)))
 
-# Base (M1 vertical): snap shifted center_x to M1 track
+# Base (M1 vertical): snap center_x to M1 track, extend height for M2 grid
 b_sx = _snap(b_box.center().x + dx, M1_PITCH)
 b_hw = max(b_box.width() // 2, M1_HALF_W)
-b_pin = pya.Box(b_sx - b_hw, b_box.bottom + dy, b_sx + b_hw, b_box.top + dy)
-b_ext = pya.Box(min(b_box.left + dx, b_pin.left), b_box.bottom + dy,
-                max(b_box.right + dx, b_pin.right), b_box.top + dy)
+b_cy = (b_box.bottom + b_box.top) // 2 + dy
+b_hh = max((b_box.top - b_box.bottom) // 2, M1_PIN_MIN_HH)
+b_pin = pya.Box(b_sx - b_hw, b_cy - b_hh, b_sx + b_hw, b_cy + b_hh)
+b_ext = pya.Box(min(b_box.left + dx, b_pin.left), min(b_box.bottom + dy, b_pin.bottom),
+                max(b_box.right + dx, b_pin.right), max(b_box.top + dy, b_pin.top))
 top.shapes(m1_draw_out).insert(b_ext)
 top.shapes(m1_pin_li).insert(b_pin)
-top.shapes(m1_label_li).insert(pya.Text("B", pya.Trans(b_sx, b_box.center().y + dy)))
+top.shapes(m1_label_li).insert(pya.Text("B", pya.Trans(b_sx, b_cy)))
 
 # Emitter (M2 horizontal): snap shifted center_y to M2 track
 e_sy = _snap(e_box.center().y + dy, M2_PITCH)
