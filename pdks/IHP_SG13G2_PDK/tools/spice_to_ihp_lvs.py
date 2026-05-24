@@ -486,6 +486,124 @@ def _rewrite_mos_nodes(line: str, new_nodes: list) -> str:
     return " ".join(tokens)
 
 
+def _flatten_deck(lines: list) -> list:
+    """Flatten a hierarchical SPICE deck by inlining subcircuit instances.
+
+    When the input defines multiple .subckt blocks with X* instance lines
+    referencing sibling subcircuits, this function recursively expands every
+    instance so the output contains a single flat subcircuit.  Internal nets
+    of expanded subcircuits are prefixed with the instance hierarchy path
+    to keep them unique.  Port nets are substituted to match the caller's
+    actual connections.
+
+    If the deck contains only one subcircuit (already flat), returns the
+    input unchanged.
+    """
+    subckt_re = re.compile(r"^\s*\.subckt\s+(\S+)\s+(.*)$", re.IGNORECASE)
+    ends_re = re.compile(r"^\s*\.ends\b", re.IGNORECASE)
+
+    subckts: dict = {}
+    stack: list = []
+    preamble: list = []
+
+    for line in lines:
+        stripped = line.rstrip()
+        m = subckt_re.match(stripped)
+        if m:
+            stack.append([m.group(1), m.group(2).split(), []])
+            continue
+        if ends_re.match(stripped):
+            if stack:
+                entry = stack.pop()
+                subckts[entry[0].upper()] = (entry[0], entry[1], entry[2])
+            continue
+        if stack:
+            stack[-1][2].append(stripped)
+        else:
+            preamble.append(stripped)
+
+    if len(subckts) <= 1:
+        return lines
+
+    referenced: set = set()
+    for name_u, (_, _, sbody) in subckts.items():
+        for bline in sbody:
+            tokens = bline.split()
+            if tokens and tokens[0].lower().startswith("x"):
+                for j in range(len(tokens) - 1, 0, -1):
+                    if "=" not in tokens[j]:
+                        referenced.add(tokens[j].upper())
+                        break
+
+    if not referenced:
+        return lines
+
+    top_candidates = [n for n in subckts if n not in referenced]
+    if not top_candidates:
+        return lines
+    top_name_u = top_candidates[-1]
+
+    def _find_ref(tokens):
+        for j in range(len(tokens) - 1, 0, -1):
+            if "=" not in tokens[j]:
+                return j
+        return None
+
+    def _expand(name_u, prefix, port_map, depth=0):
+        if depth > 50:
+            return []
+        _, ports, sbody = subckts[name_u]
+        result = []
+        for bline in sbody:
+            tokens = bline.split()
+            if not tokens or bline.lstrip().startswith("*"):
+                continue
+            if tokens[0].lower().startswith("x"):
+                ref_idx = _find_ref(tokens)
+                if ref_idx is None:
+                    result.append(bline)
+                    continue
+                ref_u = tokens[ref_idx].upper()
+                if ref_u not in subckts:
+                    result.append(bline)
+                    continue
+                actual_nets = tokens[1:ref_idx]
+                ref_ports = subckts[ref_u][1]
+                mapped = []
+                for n in actual_nets:
+                    up = n.upper()
+                    mapped.append(port_map[up] if up in port_map else
+                                  (f"{prefix}{n}" if prefix else n))
+                child_map = {fp.upper(): mn for fp, mn in zip(ref_ports, mapped)}
+                inst = tokens[0]
+                child_prefix = f"{prefix}{inst[1:]}_" if prefix else f"{inst[1:]}_"
+                result.extend(_expand(ref_u, child_prefix, child_map, depth + 1))
+            elif tokens[0].lower().startswith("m"):
+                dev = tokens[0]
+                new_dev = f"m{prefix}{dev[1:]}" if prefix else dev
+                nodes = tokens[1:5]
+                mapped_nodes = []
+                for n in nodes:
+                    up = n.upper()
+                    mapped_nodes.append(port_map[up] if up in port_map else
+                                        (f"{prefix}{n}" if prefix else n))
+                rest = tokens[5:]
+                result.append(" ".join([new_dev] + mapped_nodes + rest))
+            else:
+                result.append(bline)
+        return result
+
+    orig_name, top_ports, _ = subckts[top_name_u]
+    top_map = {p.upper(): p for p in top_ports}
+    expanded = _expand(top_name_u, "", top_map)
+
+    out: list = list(preamble)
+    out.append(f".subckt {orig_name} {' '.join(top_ports)}")
+    out.extend(expanded)
+    out.append(f".ends {orig_name}")
+    return out
+
+
 def _apply_topcell(name: str, suffix: str, topcell: str | None) -> str:
     """Return the renamed subckt identifier."""
     default = name.upper() + suffix
@@ -528,7 +646,7 @@ def translate(
 
     subckt_re = re.compile(r"^\s*\.subckt\s+(\S+)\s+(.*)$", re.IGNORECASE)
     ends_re = re.compile(r"^\s*\.ends(?:\s+(\S+))?\s*$", re.IGNORECASE)
-    lines = text.splitlines()
+    lines = _flatten_deck(text.splitlines())
 
     # Pre-pass: parse subckts and run ALIGN's preprocess sequence per subckt.
     subckts = _parse_subckts(lines)

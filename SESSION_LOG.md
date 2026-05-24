@@ -388,3 +388,14 @@ Branch: feature/ihp_sg13g2_pdk
 - 2026-05-24: No align/ or pdks/ code changes this phase -- only new example files.
 - 2026-05-24: Remaining deuda: (1) DRC maximal mode closure (fill tool), (2) router cleanup, (3) pytest scaffold.
 - Checkpoint: .claude/checkpoints/sg13g2-phase-examples-done.md.
+
+## Phase Hier - Hierarchical circuit examples + translator flatten (DONE, full DoD)
+- 2026-05-24: Two hierarchical SG13G2 circuits created and validated end-to-end.
+- 2026-05-24: Translator enhancement: added `_flatten_deck()` to `spice_to_ihp_lvs.py`. Hierarchical SPICE with sibling subcircuit definitions and X* instance lines is recursively expanded into a single flat subcircuit for LVS comparison. Stack-based parser handles truly nested definitions safely (skips flattening when no cross-references exist). Called at the start of `translate()` before merge/rename passes.
+- 2026-05-24: `examples/diff_pair_hier_sg13g2/`: 2-level hierarchy -- cm_pmos_load (2T PMOS current mirror) instantiated by diff_pair_hier_sg13g2 (3T NMOS + 1x cm_pmos_load = 5T total). GroupBlocks for diff pair MN1/MN2. ALIGN bottom-up P&R: 3 cells (CM_PMOS_LOAD_PG0, PRIMITIVE_17814354_PG0, top). LVS: PASS 0E/0W. DRC prototype: 0 violations.
+- 2026-05-24: `examples/comparator_hier_sg13g2/`: 3-level hierarchy -- clk_inv (2T, leaf), nand_half (3T, leaf), nand_rdy (2x nand_half = 6T, mid), comparator_hier_sg13g2 (9T core + 2x clk_inv + 1x nand_rdy = 19T, top). GroupBlocks for cross-coupled pairs and diff pair. ALIGN bottom-up P&R: 9 cells total. LVS: PASS 0E/0W. DRC prototype: 0 violations.
+- 2026-05-24: Tests: 56/56 PASS (51 baseline + 5 new flatten tests: two-level, three-level, noop-flat, noop-nested-no-instances, end-to-end translate).
+- 2026-05-24: `examples/comparator1_sg13g2/`: 4-level hierarchy -- faithful port of upstream examples/comparator1. INVERTER_1 (2T), INVERTER_2 (2T nf=8), NAND_1 (3T), NAND (2x NAND_1 = 6T), comparator (12T + 2 inv + 1 NAND = 22T), comparator1_sg13g2 (wrapper, 1x comparator). Dual-input Strong Arm topology. ALIGN bottom-up P&R: 8 cells. Translator `_flatten_deck` correctly expanded 4 levels of hierarchy to flat 22T netlist. LVS: PASS 0E/0W. DRC prototype: 0 violations.
+- 2026-05-24: Total validated SG13G2 circuits: 9 (6 flat + 3 hierarchical). All LVS-PASS and DRC-CLEAN in prototype mode.
+- 2026-05-24: Files modified: pdks/IHP_SG13G2_PDK/tools/spice_to_ihp_lvs.py (+80/-1), pdks/IHP_SG13G2_PDK/tools/test_spice_to_ihp_lvs.py (+75/-1), 6 new example files.
+- 2026-05-24: Remaining deuda: (1) DRC maximal mode closure (fill tool), (2) router cleanup, (3) pytest scaffold.

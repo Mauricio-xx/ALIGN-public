@@ -26,6 +26,7 @@ sys.path.insert(0, str(HERE))
 from spice_to_ihp_lvs import (
     DEFAULT_GROUND_NETS,
     DEFAULT_POWER_NETS,
+    _flatten_deck,
     _parse_subckts,
     looks_like_user_spice,
     merge_parallel_devices,
@@ -721,6 +722,111 @@ def test_nested_subckt_series_merge_inner_only():
                 outer_lines.append(line)
     assert len(outer_lines) == 1, f"outer should keep 1 device, got {len(outer_lines)}"
     assert len(inner_lines) == 1, f"inner should merge to 1 device, got {len(inner_lines)}"
+
+
+def test_flatten_two_level_hierarchy():
+    """Two-level hierarchy: leaf subcircuit instantiated by top-level."""
+    text = (
+        ".subckt leaf a b vdd\n"
+        "mp0 a a vdd vdd pmos_rvt w=560e-9 l=130e-9 nf=4 m=1\n"
+        "mp1 b a vdd vdd pmos_rvt w=560e-9 l=130e-9 nf=4 m=1\n"
+        ".ends leaf\n"
+        "\n"
+        ".subckt top_cell in out vbias vdd vss\n"
+        "mn0 tail vbias vss vss nmos_rvt w=560e-9 l=130e-9 nf=4 m=1\n"
+        "mn1 out in tail vss nmos_rvt w=560e-9 l=130e-9 nf=4 m=1\n"
+        "xi_ld out in vdd leaf\n"
+        ".ends top_cell\n"
+    )
+    lines = _flatten_deck(text.splitlines())
+    body = [l for l in lines if l.strip() and l.split()[0].lower().startswith("m")]
+    assert len(body) == 4, f"expected 4 devices after flattening, got {len(body)}"
+    subckt_headers = [l for l in lines if l.lower().strip().startswith(".subckt")]
+    assert len(subckt_headers) == 1, "should have exactly 1 subckt after flattening"
+    assert "top_cell" in subckt_headers[0].lower()
+
+
+def test_flatten_three_level_hierarchy():
+    """Three-level hierarchy: leaf -> mid -> top."""
+    text = (
+        ".subckt inv a vdd vss z\n"
+        "mn0 z a vss vss nmos_rvt w=560e-9 l=130e-9 nf=4 m=1\n"
+        "mp1 z a vdd vdd pmos_rvt w=560e-9 l=130e-9 nf=4 m=1\n"
+        ".ends inv\n"
+        "\n"
+        ".subckt buf a vdd vss z\n"
+        "xi0 a vdd vss mid inv\n"
+        "xi1 mid vdd vss z inv\n"
+        ".ends buf\n"
+        "\n"
+        ".subckt top_3l clk vdd vss out\n"
+        "mn_tail tail clk vss vss nmos_rvt w=560e-9 l=130e-9 nf=4 m=1\n"
+        "xi_buf clk vdd vss out buf\n"
+        ".ends top_3l\n"
+    )
+    lines = _flatten_deck(text.splitlines())
+    body = [l for l in lines if l.strip() and l.split()[0].lower().startswith("m")]
+    assert len(body) == 5, f"expected 5 devices (1 tail + 4 inv), got {len(body)}"
+    subckt_headers = [l for l in lines if l.lower().strip().startswith(".subckt")]
+    assert len(subckt_headers) == 1
+    assert "top_3l" in subckt_headers[0].lower()
+    flat_text = "\n".join(lines)
+    assert "i_buf_i0_" in flat_text.lower() or "i_buf_i1_" in flat_text.lower(), \
+        "internal nets should carry hierarchy prefix"
+
+
+def test_flatten_noop_for_flat_input():
+    """Flat input (single subcircuit) should pass through unchanged."""
+    text = (
+        ".subckt flat_circ a b vdd vss\n"
+        "mn0 a b vss vss nmos_rvt w=560e-9 l=130e-9 nf=4 m=1\n"
+        ".ends flat_circ\n"
+    )
+    lines_in = text.splitlines()
+    lines_out = _flatten_deck(lines_in)
+    assert lines_out is lines_in, "single subcircuit should return same list object"
+
+
+def test_flatten_noop_for_nested_no_instances():
+    """Truly nested subckt with no cross-references should not flatten."""
+    text = (
+        ".subckt OUTER d g s b\n"
+        "m_out d g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".subckt INNER d2 g2 s2 b2\n"
+        "mA d2 g2 stk b2 nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "mB stk g2 s2 b2 nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends INNER\n"
+        ".ends OUTER\n"
+    )
+    lines_in = text.splitlines()
+    lines_out = _flatten_deck(lines_in)
+    assert lines_out is lines_in, "no cross-references: should return same list object"
+
+
+def test_flatten_translate_end_to_end():
+    """Full translate with flatten: hierarchical input, flat LVS-ready output."""
+    text = (
+        ".subckt cm_load d m vdd\n"
+        "mp0 d d vdd vdd pmos_rvt w=560e-9 l=130e-9 nf=4 m=1\n"
+        "mp1 m d vdd vdd pmos_rvt w=560e-9 l=130e-9 nf=4 m=1\n"
+        ".ends cm_load\n"
+        "\n"
+        ".subckt dpair vin vip vn vp vb vdd vss\n"
+        "mn0 tail vb vss vss nmos_rvt w=560e-9 l=130e-9 nf=4 m=1\n"
+        "mn1 vn vin tail vss nmos_rvt w=560e-9 l=130e-9 nf=4 m=1\n"
+        "mn2 vp vip tail vss nmos_rvt w=560e-9 l=130e-9 nf=4 m=1\n"
+        "xi_ld vn vp vdd cm_load\n"
+        ".ends dpair\n"
+    )
+    result = translate(text, suffix="_0")
+    lines = result.strip().splitlines()
+    subckt_lines = [l for l in lines if l.upper().startswith(".SUBCKT")]
+    assert len(subckt_lines) == 1, f"should have 1 subckt, got {len(subckt_lines)}"
+    assert "DPAIR_0" in subckt_lines[0]
+    dev_lines = [l for l in lines if l.split() and l.split()[0].lower().startswith("m")]
+    assert len(dev_lines) == 5, f"expected 5 devices, got {len(dev_lines)}"
+    mos_models = {l.split()[5] for l in dev_lines}
+    assert mos_models == {"sg13_lv_nmos", "sg13_lv_pmos"}
 
 
 def _all_tests():

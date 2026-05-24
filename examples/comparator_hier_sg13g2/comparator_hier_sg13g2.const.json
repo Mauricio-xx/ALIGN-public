@@ -1,0 +1,10 @@
+[
+    {"constraint": "PowerPorts", "ports": ["VDD"]},
+    {"constraint": "GroundPorts", "ports": ["VSS"]},
+    {"constraint": "ClockPorts", "ports": ["CLK"]},
+    {"constraint": "ConfigureCompiler", "auto_constraint": false},
+    {"constraint": "GroupBlocks", "instances": ["MN0", "MN1"], "instance_name": "XCCN"},
+    {"constraint": "GroupBlocks", "instances": ["MN2", "MN3"], "instance_name": "XDP"},
+    {"constraint": "GroupBlocks", "instances": ["MP5", "MP6"], "instance_name": "XPRE"},
+    {"constraint": "GroupBlocks", "instances": ["MP7", "MP8"], "instance_name": "XCCP"}
+]
