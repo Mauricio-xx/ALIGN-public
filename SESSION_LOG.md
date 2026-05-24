@@ -487,3 +487,15 @@ Branch: feature/ihp_sg13g2_pdk
 - 2026-05-24: Mock PDK firewall: 22 passed, 803 skipped, 0 failed. Translator tests: 74/74 PASS.
 - 2026-05-24: Files: gen_all_blackboxes.py (new), sg13g2_run.sh (new). No align/ changes.
 - 2026-05-24: Remaining deuda: (1) LDO example circuit, (2) router cleanup.
+
+## Phase LDO - Low Dropout Regulator example (DONE, LVS PASS)
+- 2026-05-24: Circuit: 5T OTA error amplifier (mn_tail, mn1/mn2 diff pair, mp1/mp2 mirror load) + PMOS pass transistor (mp_pass, w=2u l=500n nf=4) + RSIL resistor feedback divider (R1, R2: w=500n l=10u). VOUT = VREF * (1 + R1/R2) = 2*VREF with equal resistors.
+- 2026-05-24: Mixed-signal: resistors trigger two-pass blackbox flow. Both R1/R2 share one blackbox primitive (RES_2T_2502631, same parameters).
+- 2026-05-24: Fixes to gen_blackbox/polyres.py during LDO bring-up:
+  - M1 drawing shapes were asymmetric around pin center (union of PyCell M1 + grid-snapped pin). ALIGN checker uses drawing centers for grid checks, causing off-grid errors. Fixed: drawing now symmetric around grid-snapped center, wide enough to cover PyCell M1 in both directions.
+  - M1_HALF_W increased from 105 to 255 (full M1 pitch) so power router can find blackbox pins.
+- 2026-05-24: Key discovery: mixed-signal circuits with PowerPorts/GroundPorts constraints fail because the power router cannot find source vertices for blackbox resistor pins (the power router expects V0 contacts as anchors, which blackbox cells lack). Fix: remove PowerPorts/GroundPorts from constraint file; use PlaceOnGrid instead (matching the bandgap's working approach). VDD/VSS get routed as signal nets by the signal router, which handles blackbox pins correctly.
+- 2026-05-24: Key discovery: substrate assignment for LVS depends on placement region. Without power grid, resistors land in NMOS pwell region, so extraction sees body=VSS. LVS must use --substrate vss (not vdd as in bandgap). Bandgap's --substrate vdd worked because its PlaceOnGrid put resistors in nwell.
+- 2026-05-24: E2E results: GDS produced (67K), SHORT: 0, OPEN: 0. LVS PASS (0 errors, 0 warnings). 8 devices matched: 3 NMOS + 3 PMOS + 2 RSIL.
+- 2026-05-24: Regressions: bandgap LVS PASS, inverter GDS clean, translator 74/74 PASS.
+- 2026-05-24: Files: examples/ldo_sg13g2/ (new), gen_blackbox/polyres.py (pin alignment fix).

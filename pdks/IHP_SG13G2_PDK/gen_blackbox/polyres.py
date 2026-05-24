@@ -37,7 +37,7 @@ PIN_DT = 2
 
 # ALIGN routing grid (layers.json) -- pin centers must land on tracks
 M1_PITCH = 510
-M1_HALF_W = 105
+M1_HALF_W = 255   # span full M1 pitch so power router can connect
 M2_PITCH = 560
 M2_HALF_H = 280   # M1 pin min half-height so router finds M2 grid crossings
 
@@ -88,9 +88,9 @@ p_hw = max(plus_box.width() // 2, M1_HALF_W)
 p_cy = (plus_box.bottom + plus_box.top) // 2 + dy
 p_hh = max((plus_box.top - plus_box.bottom) // 2, M2_HALF_H)
 p_pin = pya.Box(p_sx - p_hw, p_cy - p_hh, p_sx + p_hw, p_cy + p_hh)
-p_ext = pya.Box(min(plus_box.left + dx, p_pin.left), min(plus_box.bottom + dy, p_pin.bottom),
-                max(plus_box.right + dx, p_pin.right), max(plus_box.top + dy, p_pin.top))
-top.shapes(m1_draw_out).insert(p_ext)
+p_draw_hw = max(p_hw, plus_box.right + dx - p_sx, p_sx - (plus_box.left + dx))
+p_draw = pya.Box(p_sx - p_draw_hw, p_pin.bottom, p_sx + p_draw_hw, p_pin.top)
+top.shapes(m1_draw_out).insert(p_draw)
 top.shapes(m1_pin_li).insert(p_pin)
 top.shapes(m1_label_li).insert(pya.Text("PLUS", pya.Trans(p_sx, p_cy)))
 
@@ -100,9 +100,9 @@ m_hw = max(minus_box.width() // 2, M1_HALF_W)
 m_cy = (minus_box.bottom + minus_box.top) // 2 + dy
 m_hh = max((minus_box.top - minus_box.bottom) // 2, M2_HALF_H)
 m_pin = pya.Box(m_sx - m_hw, m_cy - m_hh, m_sx + m_hw, m_cy + m_hh)
-m_ext = pya.Box(min(minus_box.left + dx, m_pin.left), min(minus_box.bottom + dy, m_pin.bottom),
-                max(minus_box.right + dx, m_pin.right), max(minus_box.top + dy, m_pin.top))
-top.shapes(m1_draw_out).insert(m_ext)
+m_draw_hw = max(m_hw, minus_box.right + dx - m_sx, m_sx - (minus_box.left + dx))
+m_draw = pya.Box(m_sx - m_draw_hw, m_pin.bottom, m_sx + m_draw_hw, m_pin.top)
+top.shapes(m1_draw_out).insert(m_draw)
 top.shapes(m1_pin_li).insert(m_pin)
 top.shapes(m1_label_li).insert(pya.Text("MINUS", pya.Trans(m_sx, m_cy)))
 
