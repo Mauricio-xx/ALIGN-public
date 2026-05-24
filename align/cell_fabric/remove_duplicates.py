@@ -275,6 +275,26 @@ class RemoveDuplicates():
                             metal_rect_h = metal_scan_line_horizontal.find_touching(via_rect)
                             self.connectPair(via, via_rect.root(), metal_rect_h.root())
 
+    def check_same_layer_overlaps(self):
+        for layer in self.store_scan_lines:
+            if layer in self.via_layers:
+                continue
+            by_net = defaultdict(list)
+            for sl in self.store_scan_lines[layer].values():
+                for slr in sl.rects:
+                    nm = slr.root().netName
+                    if nm is not None:
+                        by_net[nm].append(slr)
+            for rects in by_net.values():
+                for i in range(len(rects)):
+                    ri = rects[i]
+                    for j in range(i + 1, len(rects)):
+                        rj = rects[j]
+                        if id(ri.root()) == id(rj.root()):
+                            continue
+                        if self.touching(ri.rect, rj.rect):
+                            self.connectPair(layer, ri, rj)
+
     def check_shorts_induced_by_terminals( self):
         for instance, v in self.subinsts.items():
             for pin, slrs in v.pins.items():
@@ -330,6 +350,7 @@ class RemoveDuplicates():
         self.build_scan_lines( self.build_centerline_tbl())
 
         self.check_shorts_induced_by_vias()
+        self.check_same_layer_overlaps()
         self.check_shorts_induced_by_terminals()
         self.check_opens()
 

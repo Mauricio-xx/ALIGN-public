@@ -455,4 +455,9 @@ Branch: feature/ihp_sg13g2_pdk
   - Result: Router-Error "fail to find source/dest vertices" eliminated (0 from 3). Router successfully routes 4/5 nets (N1, N2, N3, VREF). VSS has 1 A* path-finding failure (congestion, not grid issue). LVS checker reports 5 OPEN (pre-existing connectivity issue at GDS level, not router-related).
   - Corrected diagnosis: the issue was never PMOS mirror pins -- it was resistor/BJT M1 pin box height insufficient for router grid intersection. The router's grid vertex search requires pin extent >= adjacent-layer pitch in the perpendicular direction.
 - 2026-05-24: Tests: 74/74 translator, 22/22 Mock PDK.
-- 2026-05-24: Remaining: (1) VSS A* routing congestion, (2) LVS OPEN connectivity at GDS level, (3) automate blackbox GDS generation.
+- 2026-05-24: LVS OPEN connectivity fix (remove_duplicates.py):
+  - Root cause: PnRDB uses 0.5nm coordinates. Router wire edges (center +/- MinWidth/2 = even +/- 105 = odd) are truncated when divided by 2 for nm units. This shifts wire centerlines by 0.5nm relative to pin shapes (from GDS with even coordinates). The remove_duplicates scanline algorithm groups rectangles by twice_center (sum of width-direction edges) -- a 1-unit difference puts them in separate bins, so overlapping same-layer, same-net rectangles are never compared. Additionally, the scanline continuation check requires exact width-edge match, so router wires (MinWidth=210nm) and wider pin shapes are never connected even within the same bin.
+  - Fix: added check_same_layer_overlaps() to RemoveDuplicates. After scanline and via connectivity, groups all metal-layer rectangles by netName, then connects any pair that physically overlaps (touching test) but ended up in different Union-Find components. O(n^2) per net per layer but negligible for typical net sizes.
+  - Result: OPEN 5 -> 1. The remaining OPEN is VSS (no routed path -- A* failure). N1, N2, N3, VREF all now pass connectivity.
+  - Unit tests: 119 passed (cell_fabric+pnr), 0 new failures (3 pre-existing). 22/22 Mock PDK.
+- 2026-05-24: Remaining: (1) VSS A* routing congestion, (2) automate blackbox GDS generation.
