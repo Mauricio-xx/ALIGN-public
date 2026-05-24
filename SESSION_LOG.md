@@ -437,4 +437,17 @@ Branch: feature/ihp_sg13g2_pdk
 - 2026-05-24: First successful mixed-signal P&R run: topology identifies SCM_PMOS (current mirror), NPN13G2 (black_box BJT), RES_2T (black_box resistor). GDS produced (18KB). Routing has off-grid errors (20 LVS/DRC internal) from black_box pin geometry misalignment.
 - 2026-05-24: Blackbox GDS workflow: gen_blackbox on host (klayout) -> mount in Docker with --blackbox_dir. Primitive names use gen_key hash suffix (e.g. NPN13G2_49761263, RES_2T_19160149).
 - 2026-05-24: Mock PDK firewall: 22 passed. Translator tests: 74/74. No regressions.
-- 2026-05-24: Remaining: (1) fix routing grid alignment for black_box pins, (2) LVS validation, (3) automate blackbox GDS generation.
+- 2026-05-24: Grid alignment improvements (commit 1bd703ce):
+  - gen_blackbox (bjt/polyres/mim): pin-datatype boxes snapped to M1/M2/M5 routing grid tracks, Draw-layer bridge metal for physical connectivity, native PyCell Pin/Label shapes cleared, pcell shifted to positive territory with grid-aligned Bbox at (0,0).
+  - gds2lefjson: prefer Pin-datatype shapes for LEF PORT (fall back to Draw); eliminates duplicate off-grid port contacts from native Draw metal.
+  - PlaceOnGrid soft constraint added to bandgap example.
+  - Off-grid errors reduced 15->9. M2 emitter odd-value errors eliminated. M3 SCM errors eliminated. Remaining 9 errors are from ALIGN's ILP placer not enforcing routing-grid alignment for mixed-signal placement (C++ PnR limitation).
+- 2026-05-24: Tests: 74/74 translator, 22/22 Mock PDK.
+- 2026-05-24: Placer grid snap fix (commit 96f673fa):
+  - align/pnr/placer.py: post-ILP grid snap. After the C++ placer returns, each block's LL corner is snapped to nearest M1/M2 grid point (pitches from DrcInfo.Metal_info). All pin contacts, vias, inter-metals shifted by the same delta. 2D overlap resolution for tightly-packed blocks. Node bbox expanded to encompass snapped blocks.
+  - gen_blackbox (bjt/polyres): fixed ceil-shift formula (floor->ceiling division). Cells with content just below zero now properly shift to positive territory. Root cause: 230 // 510 = 0 but needs to be 1.
+  - HPWL assertion downgraded to warning (placer caches HPWL before snap, read-only on hierNode).
+  - Result: 0 off-grid errors (was 9). GDS produced. 5 OPEN nets remain from router failures.
+- 2026-05-24: Tests: 74/74 translator, 22/22 Mock PDK (with placer.py overlay).
+- 2026-05-24: Remaining OPEN nets: router "fail to find source/dest vertices" on 3 nets. Likely caused by PMOS mirror wide pins whose centers are between M1 tracks (inherent to MOS generator layout, not placement). Separate investigation needed.
+- 2026-05-24: Remaining: (1) router tolerance for wide off-center pins, (2) LVS validation, (3) automate blackbox GDS generation.
