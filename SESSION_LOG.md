@@ -460,4 +460,10 @@ Branch: feature/ihp_sg13g2_pdk
   - Fix: added check_same_layer_overlaps() to RemoveDuplicates. After scanline and via connectivity, groups all metal-layer rectangles by netName, then connects any pair that physically overlaps (touching test) but ended up in different Union-Find components. O(n^2) per net per layer but negligible for typical net sizes.
   - Result: OPEN 5 -> 1. The remaining OPEN is VSS (no routed path -- A* failure). N1, N2, N3, VREF all now pass connectivity.
   - Unit tests: 119 passed (cell_fabric+pnr), 0 new failures (3 pre-existing). 22/22 Mock PDK.
-- 2026-05-24: Remaining: (1) VSS A* routing congestion, (2) automate blackbox GDS generation.
+- 2026-05-24: VSS fallback router (router.py):
+  - Root cause: the C++ detail router's grid (from degenerate global routes) doesn't create connected vertices between close M1 pins. The global router produces zero-area paths for ALL nets; the detail router works around this for most nets using hierarchical terminal tiles, but VSS's 2 pins are on adjacent M1 tracks with a gap that terminal tiles don't bridge.
+  - Fix: Python-level fallback router (_fallback_route_unrouted_nets) runs after the C++ detail router. For unrouted 2-pin M1 nets in blackbox-containing designs, creates an L-shaped route: M1 wires from each pin to the nearest M2 track, V1 vias, and an M2 bridge wire. Reads PDK pitches/widths from DrcInfo.Metal_info.
+  - Guard: only fires for designs with blackbox blocks (master name starts with NPN/PNP/RES_/CAP_). Does not affect standard ALIGN test circuits.
+  - Result: OPEN 0, SHORT 0. All 5 nets fully connected. GDS produced.
+  - Unit tests: 167 passed (1 more than before), 22 pre-existing failures, 0 new regressions.
+- 2026-05-24: Remaining: (1) automate blackbox GDS generation, (2) LVS validation on bandgap.

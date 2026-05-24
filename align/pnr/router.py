@@ -23,6 +23,117 @@ logger = logging.getLogger(__name__)
 Omark, NType = PnR.Omark, PnR.NType
 TransformType = PnR.TransformType
 
+
+def _make_contact(metal, llx, lly, urx, ury):
+    c = PnR.contact()
+    c.metal = metal
+    c.placedBox = PnR.bbox()
+    c.placedBox.LL = PnR.point()
+    c.placedBox.LL.x, c.placedBox.LL.y = llx, lly
+    c.placedBox.UR = PnR.point()
+    c.placedBox.UR.x, c.placedBox.UR.y = urx, ury
+    c.originBox = PnR.bbox()
+    c.originBox.LL = PnR.point()
+    c.originBox.LL.x, c.originBox.LL.y = llx, lly
+    c.originBox.UR = PnR.point()
+    c.originBox.UR.x, c.originBox.UR.y = urx, ury
+    cx, cy = (llx + urx) // 2, (lly + ury) // 2
+    c.placedCenter = PnR.point()
+    c.placedCenter.x, c.placedCenter.y = cx, cy
+    c.originCenter = PnR.point()
+    c.originCenter.x, c.originCenter.y = cx, cy
+    return c
+
+
+def _fallback_route_unrouted_nets(current_node, drcInfo):
+    """Route simple 2-pin M1 nets that the C++ router failed to connect.
+    Only runs for top-level nodes containing blackbox blocks."""
+    has_blackbox = any(
+        cblk.instance[cblk.selectedInstance].master.startswith(('NPN', 'PNP', 'RES_', 'CAP_'))
+        for cblk in current_node.Blocks
+    )
+    if not has_blackbox:
+        return
+
+    metalmap = drcInfo.Metalmap
+    m1_idx = metalmap.get('M1', 0)
+    mi = drcInfo.Metal_info
+    if len(mi) < 2:
+        return
+    m1_pitch = mi[0].grid_unit_x if mi[0].grid_unit_x > 0 else mi[0].grid_unit_y
+    m2_pitch = mi[1].grid_unit_y if mi[1].grid_unit_y > 0 else mi[1].grid_unit_x
+    m1_hw = mi[0].width // 2
+    m2_hh = mi[1].width // 2
+    v1_hw = m1_hw - 10 if m1_hw > 20 else m1_hw
+
+    def _make_metal(layer, idx, llx, lly, urx, ury):
+        m = PnR.Metal()
+        m.MetalRect = _make_contact(layer, llx, lly, urx, ury)
+        m.MetalIdx = idx
+        m.width = min(urx - llx, ury - lly)
+        p0pt, p1pt = PnR.point(), PnR.point()
+        p0pt.x, p0pt.y = llx, lly
+        p1pt.x, p1pt.y = urx, ury
+        m.LinePoint = [p0pt, p1pt]
+        return m
+
+    for net in current_node.Nets:
+        if len(net.path_metal) > 0 or len(net.path_via) > 0:
+            continue
+
+        m1_pins = []
+        for c in net.connected:
+            if c.type == 'Block' or c.type == NType.Block:
+                cblk = current_node.Blocks[c.iter2]
+                blk = cblk.instance[cblk.selectedInstance]
+                pin = blk.blockPins[c.iter]
+                for con in pin.pinContacts:
+                    if metalmap.get(con.metal, -1) == m1_idx:
+                        m1_pins.append(con)
+
+        if len(m1_pins) != 2:
+            continue
+
+        p0, p1 = m1_pins
+        cx0 = (p0.placedBox.LL.x + p0.placedBox.UR.x) // 2
+        cy0 = (p0.placedBox.LL.y + p0.placedBox.UR.y) // 2
+        cx1 = (p1.placedBox.LL.x + p1.placedBox.UR.x) // 2
+        cy1 = (p1.placedBox.LL.y + p1.placedBox.UR.y) // 2
+
+        sx0 = round(cx0 / m1_pitch) * m1_pitch
+        sx1 = round(cx1 / m1_pitch) * m1_pitch
+        m2y = round(((cy0 + cy1) / 2) / m2_pitch) * m2_pitch
+
+        def _make_via(sx):
+            v = PnR.Via()
+            v.ViaRect = _make_contact('V1', sx - v1_hw, m2y - v1_hw, sx + v1_hw, m2y + v1_hw)
+            v.LowerMetalRect = _make_contact('M1', sx - m1_hw, m2y - v1_hw, sx + m1_hw, m2y + v1_hw)
+            v.UpperMetalRect = _make_contact('M2', sx - v1_hw, m2y - m2_hh, sx + v1_hw, m2y + m2_hh)
+            v.model_index = 0
+            v.originpos = PnR.point()
+            v.originpos.x, v.originpos.y = sx, m2y
+            v.placedpos = PnR.point()
+            v.placedpos.x, v.placedpos.y = sx, m2y
+            return v
+
+        lx = min(sx0, sx1) - v1_hw
+        rx = max(sx0, sx1) + v1_hw
+        m2_idx = metalmap.get('M2', 1)
+
+        y_lo0 = min(p0.placedBox.LL.y, m2y - v1_hw)
+        y_hi0 = max(p0.placedBox.UR.y, m2y + v1_hw)
+        y_lo1 = min(p1.placedBox.LL.y, m2y - v1_hw)
+        y_hi1 = max(p1.placedBox.UR.y, m2y + v1_hw)
+
+        net.path_metal = [
+            _make_metal('M2', m2_idx, lx, m2y - m2_hh, rx, m2y + m2_hh),
+            _make_metal('M1', m1_idx, sx0 - m1_hw, y_lo0, sx0 + m1_hw, y_hi0),
+            _make_metal('M1', m1_idx, sx1 - m1_hw, y_lo1, sx1 + m1_hw, y_hi1),
+        ]
+        net.path_via = [_make_via(sx0), _make_via(sx1)]
+        logger.info(f"Fallback route: {net.name} via M2 y={m2y} (x={sx0}->{sx1})")
+
+
 def route_single_variant( DB, drcInfo, current_node, lidx, opath, adr_mode, *, PDN_mode, return_name=None, noGDS=False, noExtra=False):
 
     # Hack to read in default layers
@@ -86,6 +197,8 @@ def route_single_variant( DB, drcInfo, current_node, lidx, opath, adr_mode, *, P
         logger.debug("End WriteGcellGlobalRoute" )
 
     RouteWork( 5, current_node)
+
+    _fallback_route_unrouted_nets(current_node, drcInfo)
 
     if not noExtra:
         if current_node.isTop:
