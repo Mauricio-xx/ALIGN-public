@@ -412,3 +412,16 @@ Branch: feature/ihp_sg13g2_pdk
 - 2026-05-24: Usage: `ALIGN_WORK_DIR=/tmp/sg13g2_pytest IHP_PDK_ROOT=... python -m pytest tests/pdks/sg13g2/ --runsg13g2 -v`. Single circuit: add `-k "inverter_v1_sg13g2"`.
 - 2026-05-24: Files: conftest.py (+3/-0), pytest.ini (+1/-0), 4 new files under tests/pdks/sg13g2/.
 - 2026-05-24: Remaining deuda: (1) router cleanup, (2) new circuit topologies (bandgap, LDO), (3) passive/bipolar translator extension.
+
+## Phase Translator Passives - BJT/resistor/cap model support (DONE)
+- 2026-05-24: Scope: extend spice_to_ihp_lvs.py to handle Q/R/C device lines for LVS compatibility.
+- 2026-05-24: BJT_MODEL_MAP added: npn13g2->npn13G2, npn13g2l->npn13G2l, npn13g2v->npn13G2v, pnpmpa->pnpMPA. Case normalization needed because KLayout extraction uses mixed-case model names.
+- 2026-05-24: RES_MODEL_MAP (rsil/rppd/rhigh) and CAP_MODEL_MAP (cap_cmim/rfcmim) added as identity maps for recognition and future extensibility.
+- 2026-05-24: translate_passive_line() added: identifies model token as last non-key=value token, applies PASSIVE_MODEL_MAP. Non-matching lines pass through unchanged.
+- 2026-05-24: _remap_passive_nets() added to flattener: Q/R/C device lines in hierarchical subckts now get net renaming during flatten (previously only M-lines were handled).
+- 2026-05-24: ALIGN_ALIAS_PATTERN updated to detect BJT model names for auto-translation trigger. sg13g2_lvs.sh grep pattern updated in parallel.
+- 2026-05-24: translate() extended: falls back to translate_passive_line() when translate_device_line() returns unchanged.
+- 2026-05-24: 18 new unit tests covering: BJT case normalization (4 models), passthrough for R/C models, non-device line safety, MOS isolation, mixed subckt, flatten+BJT, flatten+resistor, auto-detect.
+- 2026-05-24: Results: 74/74 translator tests PASS. Mock PDK firewall: 22 passed, 0 failed.
+- 2026-05-24: Files: spice_to_ihp_lvs.py (+111/-3), test_spice_to_ihp_lvs.py (+162), sg13g2_lvs.sh (+1/-1).
+- 2026-05-24: Next: bandgap reference circuit example (first mixed-signal test with BJT+resistor+MOS).

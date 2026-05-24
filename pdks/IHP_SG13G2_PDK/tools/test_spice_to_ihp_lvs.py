@@ -35,6 +35,7 @@ from spice_to_ihp_lvs import (
     remove_dummy_mos_devices,
     translate,
     translate_device_line,
+    translate_passive_line,
 )
 
 OTA_USER_SP = REPO / "examples/telescopic_ota_sg13g2/telescopic_ota_sg13g2.sp"
@@ -827,6 +828,167 @@ def test_flatten_translate_end_to_end():
     assert len(dev_lines) == 5, f"expected 5 devices, got {len(dev_lines)}"
     mos_models = {l.split()[5] for l in dev_lines}
     assert mos_models == {"sg13_lv_nmos", "sg13_lv_pmos"}
+
+
+# -- Passive / BJT translation -----------------------------------------------
+
+def test_bjt_npn13g2_case_normalised():
+    """User-facing lowercase npn13g2 must become KLayout's npn13G2."""
+    line = "Q1 c1 b1 e1 npn13g2"
+    out = translate_passive_line(line)
+    assert "npn13G2" in out
+    assert out.split()[0] == "Q1"
+
+
+def test_bjt_npn13g2l_case_normalised():
+    line = "Q2 c b e s npn13g2l we=70n le=1u Nx=1 m=1"
+    out = translate_passive_line(line)
+    assert "npn13G2l" in out
+    assert "we=70n" in out
+
+
+def test_bjt_npn13g2v_case_normalised():
+    line = "Qhv c b e npn13g2v"
+    out = translate_passive_line(line)
+    assert "npn13G2v" in out
+
+
+def test_bjt_pnpmpa_case_normalised():
+    line = "Q3 c b e pnpmpa w=1u l=1u"
+    out = translate_passive_line(line)
+    assert "pnpMPA" in out
+
+
+def test_bjt_unknown_model_passes_through():
+    line = "Q1 c b e some_other_bjt"
+    assert translate_passive_line(line) == line
+
+
+def test_resistor_rsil_passes_through():
+    """rsil model name matches extraction -- no change needed."""
+    line = "R1 n1 n2 sub rsil w=0.5u l=10u ps=0.5u m=1"
+    out = translate_passive_line(line)
+    assert "rsil" in out
+    assert out == line
+
+
+def test_resistor_rppd_passes_through():
+    line = "R2 n1 n2 sub rppd w=0.5u l=10u ps=0.5u b=0 m=1"
+    assert translate_passive_line(line) == line
+
+
+def test_resistor_rhigh_passes_through():
+    line = "R3 n1 n2 sub rhigh w=0.5u l=10u ps=0.5u b=0 m=1"
+    assert translate_passive_line(line) == line
+
+
+def test_cap_cmim_passes_through():
+    """cap_cmim model name matches extraction."""
+    line = "C1 plus minus cap_cmim w=7u l=7u m=1"
+    assert translate_passive_line(line) == line
+
+
+def test_cap_rfcmim_passes_through():
+    line = "C2 plus minus sub rfcmim w=7u l=7u wfeed=3u m=1"
+    assert translate_passive_line(line) == line
+
+
+def test_passive_non_device_line_unchanged():
+    """Non-device lines must pass through."""
+    for line in ["* comment", ".include foo.sp", ".subckt TOP a b", ""]:
+        assert translate_passive_line(line) == line
+
+
+def test_mos_line_not_touched_by_passive():
+    """MOS lines must not be modified by translate_passive_line."""
+    line = "m1 d g s b nmos_rvt w=100n l=130n nf=1 m=1"
+    assert translate_passive_line(line) == line
+
+
+def test_translate_mixed_mos_bjt_subckt():
+    """Full translate() handles MOS and BJT lines in the same subcircuit."""
+    text = (
+        ".subckt bandgap vout vdd vss\n"
+        "m1 vout vbias vss vss nmos_rvt w=560e-9 l=130e-9 nf=4 m=1\n"
+        "Q1 c1 b1 e1 npn13g2\n"
+        "R1 vdd c1 vss rsil w=0.5u l=10u ps=0.5u\n"
+        "C1 vout vss cap_cmim w=7u l=7u\n"
+        ".ends bandgap\n"
+    )
+    result = translate(text, suffix="_0")
+    assert ".SUBCKT BANDGAP_0 " in result
+    assert "sg13_lv_nmos" in result
+    assert "npn13G2" in result
+    assert "rsil" in result
+    assert "cap_cmim" in result
+
+
+def test_translate_bjt_in_subckt_rename():
+    """BJT model names normalised even after subckt renaming."""
+    text = (
+        ".subckt npn_test c b e\n"
+        "Q1 c b e npn13g2\n"
+        ".ends npn_test\n"
+    )
+    result = translate(text, suffix="_0")
+    assert ".SUBCKT NPN_TEST_0 " in result
+    assert "npn13G2" in result
+
+
+def test_looks_like_user_spice_detects_bjt():
+    """Auto-detect should trigger on BJT model names."""
+    text = ".subckt foo a b\nQ1 a b e npn13g2\n.ends foo\n"
+    assert looks_like_user_spice(text) is True
+
+
+def test_looks_like_user_spice_detects_pnpmpa():
+    text = ".subckt foo a b\nQ1 a b e pnpmpa\n.ends foo\n"
+    assert looks_like_user_spice(text) is True
+
+
+def test_flatten_hierarchy_with_bjt():
+    """Flattener remaps BJT nets correctly."""
+    text = (
+        ".subckt bias c b e\n"
+        "Q1 c b e npn13g2\n"
+        ".ends bias\n"
+        "\n"
+        ".subckt top out vdd vss\n"
+        "mn0 tail vbias vss vss nmos_rvt w=560e-9 l=130e-9 nf=4 m=1\n"
+        "xi_q out vdd vss bias\n"
+        ".ends top\n"
+    )
+    result = translate(text, suffix="_0")
+    assert ".SUBCKT TOP_0 " in result
+    assert "npn13G2" in result
+    bjt_lines = [l for l in result.splitlines() if l.strip().startswith("Q")]
+    assert len(bjt_lines) == 1
+    toks = bjt_lines[0].split()
+    assert toks[1].lower() == "out"
+    assert toks[2].lower() == "vdd"
+    assert toks[3].lower() == "vss"
+
+
+def test_flatten_hierarchy_with_resistor():
+    """Flattener remaps resistor nets correctly."""
+    text = (
+        ".subckt rload a b sub\n"
+        "R1 a b sub rsil w=0.5u l=10u ps=0.5u\n"
+        ".ends rload\n"
+        "\n"
+        ".subckt top out vdd vss\n"
+        "mn0 out vbias vss vss nmos_rvt w=560e-9 l=130e-9 nf=4 m=1\n"
+        "xi_r out vdd vss rload\n"
+        ".ends top\n"
+    )
+    result = translate(text, suffix="_0")
+    res_lines = [l for l in result.splitlines() if l.strip().startswith("R")]
+    assert len(res_lines) == 1
+    toks = res_lines[0].split()
+    assert toks[1].lower() == "out"
+    assert toks[2].lower() == "vdd"
+    assert toks[3].lower() == "vss"
+    assert "rsil" in res_lines[0]
 
 
 def _all_tests():

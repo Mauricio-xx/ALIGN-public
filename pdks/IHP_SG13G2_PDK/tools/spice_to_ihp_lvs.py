@@ -51,9 +51,35 @@ MODEL_MAP = {
     "pfet_3p3v": "sg13_hv_pmos",
 }
 
+# BJT user-facing (lowercase) -> KLayout extraction model name (case-sensitive).
+BJT_MODEL_MAP = {
+    "npn13g2":  "npn13G2",
+    "npn13g2l": "npn13G2l",
+    "npn13g2v": "npn13G2v",
+    "pnpmpa":   "pnpMPA",
+}
+
+# Resistor and cap model names match extraction as-is (all lowercase).
+# Listed here so translate_passive_line can recognise them as valid models
+# and future name changes can be handled centrally.
+RES_MODEL_MAP = {
+    "rsil":  "rsil",
+    "rppd":  "rppd",
+    "rhigh": "rhigh",
+}
+
+CAP_MODEL_MAP = {
+    "cap_cmim": "cap_cmim",
+    "rfcmim":   "rfcmim",
+}
+
+PASSIVE_MODEL_MAP = {**BJT_MODEL_MAP, **RES_MODEL_MAP, **CAP_MODEL_MAP}
+
 # Aliases that, if present in the input, mark it as user-facing (vs LVS-ready).
+# Includes MOS aliases and BJT model names that need case normalisation.
 ALIGN_ALIAS_PATTERN = re.compile(
-    r"\b(nmos_rvt|pmos_rvt|nfet|pfet|nmosHV|pmosHV|nfet_3p3V|pfet_3p3V)\b",
+    r"\b(nmos_rvt|pmos_rvt|nfet|pfet|nmosHV|pmosHV|nfet_3p3V|pfet_3p3V"
+    r"|npn13g2l?v?|pnpmpa)\b",
     re.IGNORECASE,
 )
 
@@ -168,6 +194,44 @@ def translate_device_line(line: str, w_override_meters: Optional[float] = None) 
         f"W={format_microns(w_eff)}",
     ]
     return " ".join(new_tokens)
+
+
+def translate_passive_line(line: str) -> str:
+    """Translate BJT / resistor / capacitor lines for LVS compatibility.
+
+    Normalises model names to match KLayout extraction names (case-sensitive
+    for BJTs: npn13g2 -> npn13G2). Resistor and cap model names already
+    match extraction; they are recognised here so future changes can be
+    handled centrally. Non-matching lines are returned unchanged.
+    """
+    if not line.strip():
+        return line
+    tokens = line.split()
+    head = tokens[0].lower()
+    if head.startswith(".") or head.startswith("*"):
+        return line
+    if not (head.startswith("q") or head.startswith("r") or head.startswith("c")):
+        return line
+    if len(tokens) < 3:
+        return line
+
+    param_start = len(tokens)
+    for i in range(1, len(tokens)):
+        if "=" in tokens[i]:
+            param_start = i
+            break
+
+    model_idx = param_start - 1
+    if model_idx < 2:
+        return line
+
+    model = tokens[model_idx]
+    new_model = PASSIVE_MODEL_MAP.get(model.lower())
+    if new_model is None:
+        return line
+
+    tokens[model_idx] = new_model
+    return " ".join(tokens)
 
 
 # Series-stack merge — mirrors align/compiler/preprocess.py:add_series_devices.
@@ -486,6 +550,41 @@ def _rewrite_mos_nodes(line: str, new_nodes: list) -> str:
     return " ".join(tokens)
 
 
+def _remap_passive_nets(
+    tokens: list, prefix: str, port_map: dict
+) -> str:
+    """Remap net tokens in a Q/R/C device line during hierarchy flattening.
+
+    Device syntax: ``<prefix><name> <net>... <model> [key=value...]``
+    Nets sit between the device name and the model; the model is the last
+    non-key=value token before any key=value parameters.
+    """
+    dev = tokens[0]
+    new_dev = f"{dev[0]}{prefix}{dev[1:]}" if prefix else dev
+
+    param_start = len(tokens)
+    for i in range(1, len(tokens)):
+        if "=" in tokens[i]:
+            param_start = i
+            break
+
+    model_idx = param_start - 1
+    if model_idx < 2:
+        return " ".join(tokens)
+
+    model = tokens[model_idx]
+    nets = tokens[1:model_idx]
+    params = tokens[param_start:]
+
+    mapped = []
+    for n in nets:
+        up = n.upper()
+        mapped.append(port_map[up] if up in port_map else
+                      (f"{prefix}{n}" if prefix else n))
+
+    return " ".join([new_dev] + mapped + [model] + params)
+
+
 def _flatten_deck(lines: list) -> list:
     """Flatten a hierarchical SPICE deck by inlining subcircuit instances.
 
@@ -589,6 +688,9 @@ def _flatten_deck(lines: list) -> list:
                                         (f"{prefix}{n}" if prefix else n))
                 rest = tokens[5:]
                 result.append(" ".join([new_dev] + mapped_nodes + rest))
+            elif tokens[0][0].lower() in ("q", "r", "c"):
+                result.append(
+                    _remap_passive_nets(tokens, prefix, port_map))
             else:
                 result.append(bline)
         return result
@@ -699,9 +801,12 @@ def translate(
         if i in line_overrides:
             line = _rewrite_mos_nodes(line, line_overrides[i])
 
-        out_lines.append(
-            translate_device_line(line, w_override_meters=w_overrides.get(i))
+        translated = translate_device_line(
+            line, w_override_meters=w_overrides.get(i)
         )
+        if translated is line:
+            translated = translate_passive_line(line)
+        out_lines.append(translated)
 
     return "\n".join(out_lines) + "\n"
 

@@ -85,7 +85,7 @@ if [[ -n "$NETLIST" && "$TRANSLATE_MODE" != "skip" ]]; then
     NEED_TRANSLATE=0
     if [[ "$TRANSLATE_MODE" == "force" ]]; then
         NEED_TRANSLATE=1
-    elif grep -E -iq '\b(nmos_rvt|pmos_rvt|nfet|pfet|nmosHV|pmosHV|nfet_3p3V|pfet_3p3V)\b' "$NETLIST"; then
+    elif grep -E -iq '\b(nmos_rvt|pmos_rvt|nfet|pfet|nmosHV|pmosHV|nfet_3p3V|pfet_3p3V|npn13g2l?v?|pnpmpa)\b' "$NETLIST"; then
         NEED_TRANSLATE=1
     fi
     if [[ $NEED_TRANSLATE -eq 1 ]]; then
