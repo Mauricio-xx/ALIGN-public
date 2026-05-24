@@ -86,25 +86,30 @@ class GDS2_LEF_JSON:
                     lname = self._layernames[llayer]
                     pos = lbl.position * scale
                     if lname in self._layers:
-                        pinindices = list()
-                        for idx, k in self._layers[lname].items():
-                            if k == 'Pin' or k == 'Draw':
-                                pinindices.append(idx)
+                        pin_idxs = [idx for idx, k in self._layers[lname].items() if k == 'Pin']
+                        draw_idxs = [idx for idx, k in self._layers[lname].items() if k == 'Draw']
 
-                        for pinidx in pinindices:
-                            key = (llayer, pinidx)
-                            if key in polygons:
-                                for poly in polygons[key]:
-                                    if len(poly) < 2: continue
-                                    box = [round(min(r[0] for r in poly) * scale), round(min(r[1] for r in poly) * scale),
-                                           round(max(r[0] for r in poly) * scale), round(max(r[1] for r in poly) * scale)]
-                                    if box[0] <= pos[0] and box[1] <= pos[1] and box[2] >= pos[0] and box[3] >= pos[1]:
-                                        pindict = {"layer": lname, "netName": lbl.text, "rect": box, "netType": "pin"}
-                                        if lbl.text not in pindata:
-                                            pindata[lbl.text] = set()
-                                        pindata[lbl.text].add((lname, tuple(box)))
-                                        jsondict["terminals"].append(pindict)
-                                        pincache.add(str([key, box]))
+                        def _port_rects(idxs):
+                            out = []
+                            for pidx in idxs:
+                                key = (llayer, pidx)
+                                if key in polygons:
+                                    for poly in polygons[key]:
+                                        if len(poly) < 2: continue
+                                        box = [round(min(r[0] for r in poly) * scale), round(min(r[1] for r in poly) * scale),
+                                               round(max(r[0] for r in poly) * scale), round(max(r[1] for r in poly) * scale)]
+                                        if box[0] <= pos[0] and box[1] <= pos[1] and box[2] >= pos[0] and box[3] >= pos[1]:
+                                            out.append((key, box))
+                            return out
+
+                        port_matches = _port_rects(pin_idxs) or _port_rects(draw_idxs)
+                        for key, box in port_matches:
+                            pindict = {"layer": lname, "netName": lbl.text, "rect": box, "netType": "pin"}
+                            if lbl.text not in pindata:
+                                pindata[lbl.text] = set()
+                            pindata[lbl.text].add((lname, tuple(box)))
+                            jsondict["terminals"].append(pindict)
+                            pincache.add(str([key, box]))
                         drawidx = None
                         for idx, k in self._layers[lname].items():
                             if k == 'Draw':

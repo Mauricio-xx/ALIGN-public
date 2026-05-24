@@ -31,36 +31,81 @@ pcell = layout.create_cell("{pcell}", "SG13_dev", params)
 if pcell is None:
     raise SystemExit("{pcell} PyCell instantiation returned None")
 
-top = layout.create_cell("{cell_name}")
-top.insert(pya.DCellInstArray(pcell, pya.DTrans()))
-
-# Identify PLUS/MINUS pin boxes by extreme-y Metal1 rects
 M1_DRAW = (8, 0)
 LABEL_DT = 25
 PIN_DT = 2
 
-pcell_actual = layout.cell(top.each_inst().__next__().cell_index)
+# ALIGN routing grid (layers.json) -- pin centers must land on tracks
+M1_PITCH = 510
+M1_HALF_W = 105
+M2_PITCH = 560
+
+def _snap(val, pitch):
+    return int(round(val / pitch)) * pitch
+
+# Resolve PCell, compute grid-aligned shift so cell starts at (0,0)
+_tmp = layout.create_cell("_resolve")
+_tmp.insert(pya.DCellInstArray(pcell, pya.DTrans()))
+_pcell_actual = layout.cell(_tmp.each_inst().__next__().cell_index)
+_pbb = _pcell_actual.bbox()
+dx = -(-_pbb.left // M1_PITCH) * M1_PITCH if _pbb.left < 0 else 0
+dy = -(-_pbb.bottom // M2_PITCH) * M2_PITCH if _pbb.bottom < 0 else 0
+
+# Clear native Pin/Label shapes from PyCell (may be off-grid)
 m1_draw_li = layout.find_layer(*M1_DRAW)
 if m1_draw_li is None:
     raise SystemExit("no Metal1.drawing shapes in {pcell} -- cannot extract pins")
 
-boxes = [sh.bbox() for sh in pcell_actual.shapes(m1_draw_li).each() if sh.is_box() or sh.is_polygon() or sh.is_path()]
-# Discard zero-area artifacts
+for _ln, _dt in [(M1_DRAW[0], PIN_DT), (M1_DRAW[0], LABEL_DT)]:
+    _li = layout.find_layer(_ln, _dt)
+    if _li is not None:
+        _pcell_actual.shapes(_li).clear()
+
+# Read pin boxes (native coordinates)
+boxes = [sh.bbox() for sh in _pcell_actual.shapes(m1_draw_li).each() if sh.is_box() or sh.is_polygon() or sh.is_path()]
 boxes = [b for b in boxes if b.width() > 0 and b.height() > 0]
 if len(boxes) < 2:
     raise SystemExit(f"expected >=2 Metal1 boxes for {pcell}, got {{len(boxes)}}")
 
-# PLUS = min-y bbox, MINUS = max-y bbox
 boxes.sort(key=lambda b: b.center().y)
 plus_box = boxes[0]
 minus_box = boxes[-1]
 
+layout.delete_cells([_tmp.cell_index()])
+
+# Create top cell with shifted pcell (all shapes in positive territory)
+top = layout.create_cell("{cell_name}")
+top.insert(pya.CellInstArray(pcell.cell_index(), pya.Trans(pya.Vector(dx, dy))))
+
+m1_draw_out = layout.layer(*M1_DRAW)
 m1_label_li = layout.layer(M1_DRAW[0], LABEL_DT)
 m1_pin_li   = layout.layer(M1_DRAW[0], PIN_DT)
-top.shapes(m1_label_li).insert(pya.Text("PLUS", pya.Trans(plus_box.center().x, plus_box.center().y)))
-top.shapes(m1_label_li).insert(pya.Text("MINUS", pya.Trans(minus_box.center().x, minus_box.center().y)))
-top.shapes(m1_pin_li).insert(plus_box)
-top.shapes(m1_pin_li).insert(minus_box)
+
+# PLUS (M1 vertical): snap shifted center_x to M1 track
+p_sx = _snap(plus_box.center().x + dx, M1_PITCH)
+p_hw = max(plus_box.width() // 2, M1_HALF_W)
+p_pin = pya.Box(p_sx - p_hw, plus_box.bottom + dy, p_sx + p_hw, plus_box.top + dy)
+p_ext = pya.Box(min(plus_box.left + dx, p_pin.left), plus_box.bottom + dy,
+                max(plus_box.right + dx, p_pin.right), plus_box.top + dy)
+top.shapes(m1_draw_out).insert(p_ext)
+top.shapes(m1_pin_li).insert(p_pin)
+top.shapes(m1_label_li).insert(pya.Text("PLUS", pya.Trans(p_sx, plus_box.center().y + dy)))
+
+# MINUS (M1 vertical): snap shifted center_x to M1 track
+m_sx = _snap(minus_box.center().x + dx, M1_PITCH)
+m_hw = max(minus_box.width() // 2, M1_HALF_W)
+m_pin = pya.Box(m_sx - m_hw, minus_box.bottom + dy, m_sx + m_hw, minus_box.top + dy)
+m_ext = pya.Box(min(minus_box.left + dx, m_pin.left), minus_box.bottom + dy,
+                max(minus_box.right + dx, m_pin.right), minus_box.top + dy)
+top.shapes(m1_draw_out).insert(m_ext)
+top.shapes(m1_pin_li).insert(m_pin)
+top.shapes(m1_label_li).insert(pya.Text("MINUS", pya.Trans(m_sx, minus_box.center().y + dy)))
+
+# Grid-align cell bounding box starting at (0,0)
+_fb = top.bbox()
+_x1 = -(-_fb.right // M1_PITCH) * M1_PITCH
+_y1 = -(-_fb.top // M2_PITCH) * M2_PITCH
+top.shapes(layout.layer(100, 5)).insert(pya.Box(0, 0, _x1, _y1))
 
 opts = pya.SaveLayoutOptions()
 opts.write_context_info = False

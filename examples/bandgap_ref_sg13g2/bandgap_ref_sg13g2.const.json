@@ -1,0 +1,4 @@
+[
+  {"constraint": "PlaceOnGrid", "direction": "V", "pitch": 510},
+  {"constraint": "PlaceOnGrid", "direction": "H", "pitch": 560}
+]

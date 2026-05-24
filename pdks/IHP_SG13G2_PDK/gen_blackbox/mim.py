@@ -39,6 +39,15 @@ TM1_GDS = (126, 0)
 M5_GDS  = ( 67, 0)
 LABEL_DT = 25  # Per layers.json: Pin=2, Label=25
 
+# ALIGN routing grid (layers.json)
+M5_PITCH  = 640
+TM1_PITCH = 3280
+M1_PITCH  = 510
+M2_PITCH  = 560
+
+def _snap(val, pitch):
+    return int(round(val / pitch)) * pitch
+
 def _bbox_center(cell, gds_layer, gds_dt):
     li = layout.find_layer(gds_layer, gds_dt)
     if li is None:
@@ -58,13 +67,11 @@ minus_pt = _bbox_center(pcell_actual, *M5_GDS)
 # Inject labels at TOP level so gds2lefjson sees them in the top cell after flatten
 tm1_label_li = layout.layer(TM1_GDS[0], LABEL_DT)
 m5_label_li  = layout.layer(M5_GDS[0],  LABEL_DT)
-top.shapes(tm1_label_li).insert(pya.Text("PLUS", pya.Trans(plus_pt)))
-top.shapes(m5_label_li ).insert(pya.Text("MINUS", pya.Trans(minus_pt)))
-
-# Also inject Pin-datatype boxes so the LEF has a proper port geometry
 PIN_DT = 2
-tm1_pin_li = layout.layer(TM1_GDS[0], PIN_DT)
-m5_pin_li  = layout.layer(M5_GDS[0],  PIN_DT)
+tm1_pin_li  = layout.layer(TM1_GDS[0], PIN_DT)
+m5_pin_li   = layout.layer(M5_GDS[0],  PIN_DT)
+tm1_draw_out = layout.layer(*TM1_GDS)
+m5_draw_out  = layout.layer(*M5_GDS)
 
 def _bbox_of(cell, gds_layer, gds_dt):
     li = layout.find_layer(gds_layer, gds_dt)
@@ -75,10 +82,35 @@ def _bbox_of(cell, gds_layer, gds_dt):
 
 plus_bbox  = _bbox_of(pcell_actual, *TM1_GDS)
 minus_bbox = _bbox_of(pcell_actual, *M5_GDS)
-top.shapes(tm1_pin_li).insert(plus_bbox)
-top.shapes(m5_pin_li ).insert(minus_bbox)
 
-# Skip klayout context-info cell; otherwise gdspy in ALIGN picks the wrong top
+# MINUS (M5 vertical): snap center_x to M5 track
+mn_sx = _snap(minus_pt.x, M5_PITCH)
+mn_hw = max(minus_bbox.width() // 2, 160)
+mn_pin = pya.Box(mn_sx - mn_hw, minus_bbox.bottom, mn_sx + mn_hw, minus_bbox.top)
+mn_ext = pya.Box(min(minus_bbox.left, mn_pin.left), minus_bbox.bottom,
+                 max(minus_bbox.right, mn_pin.right), minus_bbox.top)
+top.shapes(m5_draw_out).insert(mn_ext)
+top.shapes(m5_pin_li).insert(mn_pin)
+top.shapes(m5_label_li).insert(pya.Text("MINUS", pya.Trans(pya.Point(mn_sx, minus_pt.y))))
+
+# PLUS (TM1 horizontal): snap center_y to TM1 track
+pl_sy = _snap(plus_pt.y, TM1_PITCH)
+pl_hh = max(plus_bbox.height() // 2, 820)
+pl_pin = pya.Box(plus_bbox.left, pl_sy - pl_hh, plus_bbox.right, pl_sy + pl_hh)
+pl_ext = pya.Box(plus_bbox.left, min(plus_bbox.bottom, pl_pin.bottom),
+                 plus_bbox.right, max(plus_bbox.top, pl_pin.top))
+top.shapes(tm1_draw_out).insert(pl_ext)
+top.shapes(tm1_pin_li).insert(pl_pin)
+top.shapes(tm1_label_li).insert(pya.Text("PLUS", pya.Trans(pya.Point(plus_pt.x, pl_sy))))
+
+# Grid-align cell bounding box
+_fb = top.bbox()
+_x0 = (_fb.left // M1_PITCH) * M1_PITCH
+_y0 = (_fb.bottom // M2_PITCH) * M2_PITCH
+_x1 = -(-_fb.right // M1_PITCH) * M1_PITCH
+_y1 = -(-_fb.top // M2_PITCH) * M2_PITCH
+top.shapes(layout.layer(100, 5)).insert(pya.Box(_x0, _y0, _x1, _y1))
+
 opts = pya.SaveLayoutOptions()
 opts.write_context_info = False
 layout.write("{out_gds}", opts)

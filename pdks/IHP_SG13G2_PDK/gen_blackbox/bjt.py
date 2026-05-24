@@ -34,23 +34,42 @@ pcell = layout.create_cell("{pcell}", "SG13_dev", params)
 if pcell is None:
     raise SystemExit("{pcell} PyCell instantiation returned None")
 
-top = layout.create_cell("{cell_name}")
-top.insert(pya.DCellInstArray(pcell, pya.DTrans()))
-
 M1_DRAW = (8, 0)
 M2_DRAW = (10, 0)
 LABEL_DT = 25
 PIN_DT = 2
 
-pcell_actual = layout.cell(top.each_inst().__next__().cell_index)
+# ALIGN routing grid (layers.json) -- pin centers must land on tracks
+M1_PITCH = 510
+M2_PITCH = 560
+M1_HALF_W = 105
+M2_HALF_H = 145
 
+def _snap(val, pitch):
+    return int(round(val / pitch)) * pitch
+
+# Resolve PCell, compute grid-aligned shift so cell starts at (0,0)
+_tmp = layout.create_cell("_resolve")
+_tmp.insert(pya.DCellInstArray(pcell, pya.DTrans()))
+_pcell_actual = layout.cell(_tmp.each_inst().__next__().cell_index)
+_pbb = _pcell_actual.bbox()
+dx = -(-_pbb.left // M1_PITCH) * M1_PITCH if _pbb.left < 0 else 0
+dy = -(-_pbb.bottom // M2_PITCH) * M2_PITCH if _pbb.bottom < 0 else 0
+
+# Clear native Pin/Label shapes from PyCell (may be off-grid)
+for _ln, _dt in [(M1_DRAW[0], PIN_DT), (M2_DRAW[0], PIN_DT),
+                 (M1_DRAW[0], LABEL_DT), (M2_DRAW[0], LABEL_DT)]:
+    _li = layout.find_layer(_ln, _dt)
+    if _li is not None:
+        _pcell_actual.shapes(_li).clear()
+
+# Read pin boxes from Draw shapes (native coordinates)
 m1_li = layout.find_layer(*M1_DRAW)
 m2_li = layout.find_layer(*M2_DRAW)
 if m1_li is None:
     raise SystemExit("no Metal1 shapes in {pcell}")
 if m2_li is None:
     raise SystemExit("no Metal2 shapes in {pcell}")
-
 
 def _good_boxes(cell, li):
     out = []
@@ -60,9 +79,8 @@ def _good_boxes(cell, li):
             out.append(b)
     return out
 
-
-m1_boxes = _good_boxes(pcell_actual, m1_li)
-m2_boxes = _good_boxes(pcell_actual, m2_li)
+m1_boxes = _good_boxes(_pcell_actual, m1_li)
+m2_boxes = _good_boxes(_pcell_actual, m2_li)
 if len(m1_boxes) < 2:
     raise SystemExit(f"expected >=2 Metal1 boxes for {pcell}, got {{len(m1_boxes)}}")
 if not m2_boxes:
@@ -73,17 +91,54 @@ b_box = m1_boxes[0]
 c_box = m1_boxes[-1]
 e_box = max(m2_boxes, key=lambda b: b.width() * b.height())
 
+layout.delete_cells([_tmp.cell_index()])
+
+# Create top cell with shifted pcell (all shapes in positive territory)
+top = layout.create_cell("{cell_name}")
+top.insert(pya.CellInstArray(pcell.cell_index(), pya.Trans(pya.Vector(dx, dy))))
+
+m1_draw_out = layout.layer(*M1_DRAW)
+m2_draw_out = layout.layer(*M2_DRAW)
 m1_label_li = layout.layer(M1_DRAW[0], LABEL_DT)
 m1_pin_li   = layout.layer(M1_DRAW[0], PIN_DT)
 m2_label_li = layout.layer(M2_DRAW[0], LABEL_DT)
 m2_pin_li   = layout.layer(M2_DRAW[0], PIN_DT)
 
-top.shapes(m1_label_li).insert(pya.Text("C", pya.Trans(c_box.center().x, c_box.center().y)))
-top.shapes(m1_label_li).insert(pya.Text("B", pya.Trans(b_box.center().x, b_box.center().y)))
-top.shapes(m2_label_li).insert(pya.Text("E", pya.Trans(e_box.center().x, e_box.center().y)))
-top.shapes(m1_pin_li).insert(c_box)
-top.shapes(m1_pin_li).insert(b_box)
-top.shapes(m2_pin_li).insert(e_box)
+# Collector (M1 vertical): snap shifted center_x to M1 track
+c_sx = _snap(c_box.center().x + dx, M1_PITCH)
+c_hw = max(c_box.width() // 2, M1_HALF_W)
+c_pin = pya.Box(c_sx - c_hw, c_box.bottom + dy, c_sx + c_hw, c_box.top + dy)
+c_ext = pya.Box(min(c_box.left + dx, c_pin.left), c_box.bottom + dy,
+                max(c_box.right + dx, c_pin.right), c_box.top + dy)
+top.shapes(m1_draw_out).insert(c_ext)
+top.shapes(m1_pin_li).insert(c_pin)
+top.shapes(m1_label_li).insert(pya.Text("C", pya.Trans(c_sx, c_box.center().y + dy)))
+
+# Base (M1 vertical): snap shifted center_x to M1 track
+b_sx = _snap(b_box.center().x + dx, M1_PITCH)
+b_hw = max(b_box.width() // 2, M1_HALF_W)
+b_pin = pya.Box(b_sx - b_hw, b_box.bottom + dy, b_sx + b_hw, b_box.top + dy)
+b_ext = pya.Box(min(b_box.left + dx, b_pin.left), b_box.bottom + dy,
+                max(b_box.right + dx, b_pin.right), b_box.top + dy)
+top.shapes(m1_draw_out).insert(b_ext)
+top.shapes(m1_pin_li).insert(b_pin)
+top.shapes(m1_label_li).insert(pya.Text("B", pya.Trans(b_sx, b_box.center().y + dy)))
+
+# Emitter (M2 horizontal): snap shifted center_y to M2 track
+e_sy = _snap(e_box.center().y + dy, M2_PITCH)
+e_hh = max(e_box.height() // 2, M2_HALF_H)
+e_pin = pya.Box(e_box.left + dx, e_sy - e_hh, e_box.right + dx, e_sy + e_hh)
+e_ext = pya.Box(e_box.left + dx, min(e_box.bottom + dy, e_pin.bottom),
+                e_box.right + dx, max(e_box.top + dy, e_pin.top))
+top.shapes(m2_draw_out).insert(e_ext)
+top.shapes(m2_pin_li).insert(e_pin)
+top.shapes(m2_label_li).insert(pya.Text("E", pya.Trans(e_box.center().x + dx, e_sy)))
+
+# Grid-align cell bounding box starting at (0,0)
+_fb = top.bbox()
+_x1 = -(-_fb.right // M1_PITCH) * M1_PITCH
+_y1 = -(-_fb.top // M2_PITCH) * M2_PITCH
+top.shapes(layout.layer(100, 5)).insert(pya.Box(0, 0, _x1, _y1))
 
 opts = pya.SaveLayoutOptions()
 opts.write_context_info = False
