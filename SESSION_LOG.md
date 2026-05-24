@@ -367,3 +367,15 @@ Branch: feature/ihp_sg13g2_pdk
 - 2026-05-23: Phase Mock-Harmonise full DoD (4/4): 2 bugs backported to 3 Mock PDKs, Mock firewall green (Docker + host), translator tests green, no align/ core touched.
 - 2026-05-23: Remaining deuda: (1) router cleanup, (2) AspectRatio auto-relax, (3) translator nested-subckt, (4) pytest scaffold for SG13G2.
 - Checkpoint: .claude/checkpoints/sg13g2-phase-mock-harmonise-done.md.
+
+## Phase AR+Nested - AspectRatio auto-relax + Translator nested-subckt (DONE, full DoD)
+- 2026-05-24: Two tasks completed in parallel from deuda list items #2 and #3.
+- 2026-05-24: Task 1 (AspectRatio auto-relax): Added `_auto_relax_aspect_ratio(verilog_d)` to `align/pnr/main.py`. For modules with <= 1 instance, the AspectRatio constraint is removed from the source ConstraintDB before both PnR constraint file generation and Z3 post-placement checking. Logs a WARNING when triggered. Root cause: single-instance modules have zero placement freedom -- the top-level aspect ratio is entirely determined by the primitive's shape variants, which may not satisfy user-specified bounds.
+- 2026-05-24: Task 1 validation: inverter_v1_sg13g2 with AspectRatio [0.5, 4.0] (previously crashed with std::bad_alloc) now completes successfully: 3 placement solutions, routing clean, GDS produced (16,212 B). Warning correctly logged: "Auto-dropped AspectRatio for 'INVERTER_V1_SG13G2': single-instance module has no placement freedom to satisfy the constraint".
+- 2026-05-24: Task 2 (Translator nested-subckt): Replaced flat `current` variable in `_parse_subckts()` with a stack. Push on `.subckt`, pop on `.ends`, devices assigned to `stack[-1]` (innermost subckt). Flat behavior preserved (stack depth 0 or 1 for non-nested input). Docstring updated to reflect that nested subckts are now fully supported.
+- 2026-05-24: Task 2 validation: 5 new tests added: device assignment (inner/outer), rename propagation, independent parallel merge within inner subckt, 3-level nesting, series merge isolation. All pre-existing tests unaffected.
+- 2026-05-24: Mock PDK firewall (Docker): 22 passed, 731 skipped, 0 failed. PnR tests (host, excl pre-existing router/cc): 40 passed, 8 skipped, 0 failed. Translator tests: 51/51 PASS (46 baseline + 5 new nested-subckt).
+- 2026-05-24: Files modified: align/pnr/main.py (+14/-0), pdks/IHP_SG13G2_PDK/tools/spice_to_ihp_lvs.py (+13/-10), pdks/IHP_SG13G2_PDK/tools/test_spice_to_ihp_lvs.py (+95/-0).
+- 2026-05-24: Phase AR+Nested full DoD (4/4): AspectRatio crash fixed with documented root-cause, translator nested-subckt support implemented with tests, Mock firewall green, all pre-existing tests unaffected.
+- 2026-05-24: Remaining deuda: (1) router cleanup (dead Minlength_ViaLength_Diff), (2) pytest scaffold for SG13G2 examples.
+- Checkpoint: .claude/checkpoints/sg13g2-phase-ar-nested-done.md.

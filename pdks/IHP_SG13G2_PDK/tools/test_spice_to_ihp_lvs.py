@@ -608,6 +608,121 @@ def test_dummy_cmc_ota_no_false_drops():
     assert dropped == set(), f"unexpected dummy drops on CMC OTA: {dropped}"
 
 
+# -- Nested subcircuit support -----------------------------------------------
+
+def test_nested_subckt_devices_assigned_correctly():
+    """Devices inside an inner subckt belong to it; devices in the outer
+    subckt (before and after the inner block) belong to the outer."""
+    text = (
+        ".subckt OUTER a b c\n"
+        "m1 a b 0 0 nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".subckt INNER x y\n"
+        "m2 x y 0 0 nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends INNER\n"
+        "m3 c b 0 0 pmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends OUTER\n"
+    )
+    subckts = _parse_subckts(text.splitlines())
+    assert len(subckts) == 2
+    outer = [s for s in subckts if s.name == "OUTER"][0]
+    inner = [s for s in subckts if s.name == "INNER"][0]
+    assert len(outer.devices) == 2, f"outer should have m1+m3, got {len(outer.devices)}"
+    assert len(inner.devices) == 1, f"inner should have m2, got {len(inner.devices)}"
+    assert outer.devices[0].name.lower() == "m1"
+    assert outer.devices[1].name.lower() == "m3"
+    assert inner.devices[0].name.lower() == "m2"
+
+
+def test_nested_subckt_translate_renames_both():
+    """Both outer and inner subckts get renamed with the suffix."""
+    text = (
+        ".subckt OUTER a b\n"
+        "m1 a b 0 0 nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".subckt INNER x y\n"
+        "m2 x y 0 0 nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends INNER\n"
+        ".ends OUTER\n"
+    )
+    result = translate(text, suffix="_0")
+    assert ".SUBCKT OUTER_0 " in result
+    assert ".ENDS OUTER_0" in result
+    assert ".SUBCKT INNER_0 " in result
+    assert ".ENDS INNER_0" in result
+
+
+def test_nested_subckt_merge_independent():
+    """Parallel merge within the inner subckt does not affect the outer."""
+    text = (
+        ".subckt OUTER d g s b\n"
+        "m1 d g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".subckt INNER x y z w\n"
+        "mA x y z w nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "mB x y z w nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends INNER\n"
+        "m2 s g d b pmos_rvt w=200n l=130n nf=1 m=1\n"
+        ".ends OUTER\n"
+    )
+    subckts = _parse_subckts(text.splitlines())
+    inner = [s for s in subckts if s.name == "INNER"][0]
+    dp, wo = merge_parallel_devices(inner)
+    assert len(dp) == 1, "inner should have 1 parallel-merged drop"
+    outer = [s for s in subckts if s.name == "OUTER"][0]
+    dp_o, wo_o = merge_parallel_devices(outer)
+    assert dp_o == set(), "outer should have no parallel merges"
+
+
+def test_nested_subckt_three_levels():
+    """Stack-based parser handles depth > 2."""
+    text = (
+        ".subckt L1 a b\n"
+        "m1 a b 0 0 nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".subckt L2 c d\n"
+        "m2 c d 0 0 nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".subckt L3 e f\n"
+        "m3 e f 0 0 nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends L3\n"
+        "m4 d c 0 0 pmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends L2\n"
+        "m5 b a 0 0 pmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends L1\n"
+    )
+    subckts = _parse_subckts(text.splitlines())
+    assert len(subckts) == 3
+    by_name = {s.name: s for s in subckts}
+    assert len(by_name["L1"].devices) == 2  # m1, m5
+    assert len(by_name["L2"].devices) == 2  # m2, m4
+    assert len(by_name["L3"].devices) == 1  # m3
+
+
+def test_nested_subckt_series_merge_inner_only():
+    """Series merge in the inner subckt should not touch outer devices."""
+    text = (
+        ".subckt OUTER d g s b\n"
+        "m_out d g s b nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".subckt INNER d2 g2 s2 b2\n"
+        "mA d2 g2 stk b2 nmos_rvt w=100n l=130n nf=1 m=1\n"
+        "mB stk g2 s2 b2 nmos_rvt w=100n l=130n nf=1 m=1\n"
+        ".ends INNER\n"
+        ".ends OUTER\n"
+    )
+    result = translate(text, suffix="_0")
+    outer_lines = []
+    inner_lines = []
+    in_inner = False
+    for line in result.splitlines():
+        if "INNER" in line and line.strip().startswith(".SUBCKT"):
+            in_inner = True
+        elif "INNER" in line and line.strip().startswith(".ENDS"):
+            in_inner = False
+        elif line.split() and line.split()[0].lower().startswith("m") and not line.startswith("."):
+            if in_inner:
+                inner_lines.append(line)
+            else:
+                outer_lines.append(line)
+    assert len(outer_lines) == 1, f"outer should keep 1 device, got {len(outer_lines)}"
+    assert len(inner_lines) == 1, f"inner should merge to 1 device, got {len(inner_lines)}"
+
+
 def _all_tests():
     return [
         (name, obj)

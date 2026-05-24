@@ -79,6 +79,22 @@ def _generate_json(*, hN, variant, primitive_dir, pdk_dir, output_dir, extract=F
     return ret
 
 
+def _auto_relax_aspect_ratio(verilog_d):
+    """Drop AspectRatio from single-instance modules where the constraint
+    is unachievable (no placement freedom with only one leaf cell)."""
+    from ..schema.constraint import AspectRatio
+    for module in verilog_d['modules']:
+        if len(module['instances']) > 1:
+            continue
+        to_remove = [c for c in module['constraints'] if isinstance(c, AspectRatio)]
+        for c in to_remove:
+            module['constraints'].remove(c)
+            logger.warning(
+                f"Auto-dropped AspectRatio for '{module['name']}': single-instance "
+                f"module has no placement freedom to satisfy the constraint"
+            )
+
+
 def gen_constraint_files(verilog_d, input_dir):
     pnr_const_ds = {module['name'] : PnRConstraintWriter().map_valid_const(module['constraints'], module) for module in verilog_d['modules']}
 
@@ -217,6 +233,7 @@ def generate_pnr(topology_dir, primitive_dir, pdk_dir, output_dir, subckt, *, pr
         verilog_d = VerilogJsonTop.parse_file(topology_dir / verilog_file)
         
         manipulate_hierarchy(verilog_d, subckt)
+        _auto_relax_aspect_ratio(verilog_d)
 
         logger.debug(f"updated verilog: {verilog_d}")
         with (input_dir/verilog_file).open("wt") as fp:

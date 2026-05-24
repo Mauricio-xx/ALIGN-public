@@ -23,12 +23,11 @@ Transformations applied per line:
   - everything else (comments, blank lines, .model, .include) is preserved.
 
 Limitations:
-  - Single-subckt input. Nested subckts work but every .subckt header gets
-    the same suffix treatment; the user controls the top-cell name via
-    --topcell (overrides the default uppercase+suffix rule for the matching
-    subckt only, others still get the default rule).
   - Only MOS device lines are translated; resistors/caps/BJTs/inductors
     pass through verbatim.
+  - Every .subckt header gets the same suffix treatment; the user controls
+    the top-cell name via --topcell (overrides the default uppercase+suffix
+    rule for the matching subckt only, others still get the default rule).
 """
 
 from __future__ import annotations
@@ -223,34 +222,37 @@ def _parse_mos_line(line: str, line_no: int) -> Optional[_Device]:
 
 
 def _parse_subckts(lines: list) -> list:
-    """Parse the deck into _Subckt entries. Lines outside .subckt blocks are
-    ignored for merge purposes (top-level MOS without a subckt is rare in
-    ALIGN user input and not the target of series-stack merging here)."""
+    """Parse the deck into _Subckt entries, supporting nested .subckt blocks.
+
+    Uses a stack so that devices inside an inner subckt belong to that inner
+    subckt, while devices between the inner .ends and the outer .ends belong
+    to the outer subckt. Lines outside any .subckt block are ignored."""
     subckt_re = re.compile(r"^\s*\.subckt\s+(\S+)\s+(.*)$", re.IGNORECASE)
     ends_re = re.compile(r"^\s*\.ends\b", re.IGNORECASE)
     subckts: list = []
-    current: Optional[_Subckt] = None
+    stack: list = []
     for i, raw in enumerate(lines):
         line = raw.rstrip()
         m = subckt_re.match(line)
         if m:
-            current = _Subckt(
+            sub = _Subckt(
                 header_line_no=i,
                 name=m.group(1),
                 ports=m.group(2).split(),
             )
-            subckts.append(current)
+            subckts.append(sub)
+            stack.append(sub)
             continue
         if ends_re.match(line):
-            if current is not None:
-                current.ends_line_no = i
-            current = None
+            if stack:
+                stack[-1].ends_line_no = i
+                stack.pop()
             continue
-        if current is None:
+        if not stack:
             continue
         dev = _parse_mos_line(line, i)
         if dev is not None:
-            current.devices.append(dev)
+            stack[-1].devices.append(dev)
     return subckts
 
 
