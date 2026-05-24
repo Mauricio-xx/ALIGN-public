@@ -399,3 +399,16 @@ Branch: feature/ihp_sg13g2_pdk
 - 2026-05-24: Total validated SG13G2 circuits: 9 (6 flat + 3 hierarchical). All LVS-PASS and DRC-CLEAN in prototype mode.
 - 2026-05-24: Files modified: pdks/IHP_SG13G2_PDK/tools/spice_to_ihp_lvs.py (+80/-1), pdks/IHP_SG13G2_PDK/tools/test_spice_to_ihp_lvs.py (+75/-1), 6 new example files.
 - 2026-05-24: Remaining deuda: (1) DRC maximal mode closure (fill tool), (2) router cleanup, (3) pytest scaffold.
+
+## Phase Pytest - SG13G2 integration test scaffold (DONE, full DoD)
+- 2026-05-24: Scope: automated pytest suite replacing the manual Docker + LVS + DRC validation loop for all 9 SG13G2 circuits.
+- 2026-05-24: Created `tests/pdks/sg13g2/` with conftest.py, test_schematic2layout.py, test_lvs_drc.py. 72 tests total (9 circuits x 8 tests: 3 P&R + 3 LVS + 2 DRC).
+- 2026-05-24: Architecture: session-scoped parametrized `circuit` fixture drives all 9 examples. P&R runs via Docker (align-ihp:latest), LVS/DRC run on host via sg13g2_lvs.sh and sg13g2_drc.sh. Three skip conditions: `--runsg13g2` flag gate, Docker image availability, IHP_PDK_ROOT + klayout >= 0.30.2.
+- 2026-05-24: Root conftest.py extended with `--runsg13g2` option and skip logic (mirrors --runnightly pattern). pytest.ini extended with `sg13g2` marker.
+- 2026-05-24: Key fixes during development: (a) LOG mount required for Docker (ALIGN logmanager creates LOG/ in workdir); (b) align/pnr/main.py overlay mount needed for AspectRatio auto-relax; (c) KLAYOUT_HOME/KLAYOUT_PATH env vars stripped in signoff env to prevent multi-tech klayout config conflicts (SIGSEGV on DRC with nix klayout picking up wrong tech); (d) klayout binary search tries /usr/bin/klayout before PATH to avoid nix 0.29.1.
+- 2026-05-24: Full suite result: 72/72 passed in 561s (9m21s). All 9 circuits: P&R produces GDS+LEF, LVS netlists match, DRC prototype 0 violations.
+- 2026-05-24: Mock PDK firewall (Docker, selective mounts): 22 passed, 803 skipped (731 baseline + 72 SG13G2 skipped without --runsg13g2), 0 failed.
+- 2026-05-24: Translator tests: 56/56 PASS unchanged.
+- 2026-05-24: Usage: `ALIGN_WORK_DIR=/tmp/sg13g2_pytest IHP_PDK_ROOT=... python -m pytest tests/pdks/sg13g2/ --runsg13g2 -v`. Single circuit: add `-k "inverter_v1_sg13g2"`.
+- 2026-05-24: Files: conftest.py (+3/-0), pytest.ini (+1/-0), 4 new files under tests/pdks/sg13g2/.
+- 2026-05-24: Remaining deuda: (1) router cleanup, (2) new circuit topologies (bandgap, LDO), (3) passive/bipolar translator extension.

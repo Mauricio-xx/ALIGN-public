@@ -11,6 +11,9 @@ def pytest_addoption(parser):
         "--runregression", action="store_true", default=False, help="run regression tests"
     )
     parser.addoption(
+        "--runsg13g2", action="store_true", default=False, help="run IHP SG13G2 integration tests"
+    )
+    parser.addoption(
         "--maxerrors", type=int, help="Maximum number of circuit errors to tolerate (Use with --runnightly)", default=0
     )
     parser.addoption(
@@ -38,6 +41,11 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "regression" in item.keywords:
                 item.add_marker(skip_regression)
+    if not config.getoption("--runsg13g2"):
+        skip_sg13g2 = pytest.mark.skip(reason="need --runsg13g2 option to run")
+        for item in items:
+            if "sg13g2" in item.keywords:
+                item.add_marker(skip_sg13g2)
 
 
 def pytest_generate_tests(metafunc):
