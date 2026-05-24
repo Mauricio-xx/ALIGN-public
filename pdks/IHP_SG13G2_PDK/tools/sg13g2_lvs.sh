@@ -30,6 +30,9 @@ NET_ONLY=0
 IMPLICIT=""
 TRANSLATE_MODE="auto"   # auto | force | skip
 SUFFIX="_0"
+SUBSTRATE="sub!"
+IGNORE_PORTS=0
+MIXED_SIGNAL=0
 
 usage() {
     sed -n '/^# IHP SG13G2 LVS wrapper/,/^$/p' "$0" | sed 's/^# //;s/^#//'
@@ -45,6 +48,9 @@ while [[ $# -gt 0 ]]; do
         --translate) TRANSLATE_MODE="force"; shift;;
         --no-translate) TRANSLATE_MODE="skip"; shift;;
         --suffix) SUFFIX="$2"; shift 2;;
+        --substrate) SUBSTRATE="$2"; shift 2;;
+        --ignore-ports) IGNORE_PORTS=1; shift;;
+        --mixed-signal) MIXED_SIGNAL=1; shift;;
         -h|--help) usage;;
         --) shift; break;;
         -*) echo "unknown flag: $1" >&2; usage;;
@@ -101,7 +107,7 @@ if [[ -n "$NETLIST" && "$TRANSLATE_MODE" != "skip" ]]; then
         else
             TRANSLATED_NETLIST="$(mktemp --suffix=".lvs.sp")"
         fi
-        TRANS_ARGS=( "$NETLIST" -o "$TRANSLATED_NETLIST" --suffix "$SUFFIX" )
+        TRANS_ARGS=( "$NETLIST" -o "$TRANSLATED_NETLIST" --suffix "$SUFFIX" --substrate "$SUBSTRATE" )
         if [[ -n "$TOPCELL" ]]; then
             TRANS_ARGS+=( --topcell "$TOPCELL" )
         fi
@@ -127,6 +133,32 @@ fi
 if [[ -n "$IMPLICIT" ]]; then
     ARGS+=( --implicit_nets "$IMPLICIT" )
 fi
+if [[ $IGNORE_PORTS -eq 1 ]]; then
+    ARGS+=( --ignore_top_ports_mismatch )
+fi
 
-echo ">> sg13g2_lvs.sh: gds=$LAYOUT netlist=${EFFECTIVE_NETLIST:-<none>} net_only=$NET_ONLY"
-python3 "$RUN_LVS_PY" "${ARGS[@]}"
+if [[ $MIXED_SIGNAL -eq 1 && $NET_ONLY -eq 0 && -n "$EFFECTIVE_NETLIST" ]]; then
+    # Workaround for KLayout SPICE reader uppercasing model names while
+    # the extraction preserves mixed case (npn13G2 vs NPN13G2, rsil vs RSIL).
+    # Extract first, fix case in the extracted netlist, then compare.
+    echo ">> sg13g2_lvs.sh: mixed-signal mode -- extract + fix case + compare"
+    EXTRACT_DIR="${RUN_DIR:-$(mktemp -d)}"
+    mkdir -p "$EXTRACT_DIR"
+    EXTRACT_ARGS=( --layout "$(readlink -f "$LAYOUT")" --net_only --run_dir "$EXTRACT_DIR" )
+    [[ -n "$TOPCELL" ]] && EXTRACT_ARGS+=( --topcell "$TOPCELL" )
+    python3 "$RUN_LVS_PY" "${EXTRACT_ARGS[@]}"
+    EXTRACTED_CIR="$(ls "$EXTRACT_DIR"/*_extracted.cir 2>/dev/null | head -1)"
+    if [[ -z "$EXTRACTED_CIR" ]]; then
+        echo "ERROR: extraction produced no .cir file" >&2
+        exit 1
+    fi
+    FIXED_CIR="${EXTRACTED_CIR%.cir}_fixed.cir"
+    sed 's/npn13G2/NPN13G2/g; s/npn13G2l/NPN13G2L/g; s/npn13G2v/NPN13G2V/g; s/pnpMPA/PNPMPA/g; s/ rsil / RSIL /g; s/ rppd / RPPD /g; s/ rhigh / RHIGH /g' "$EXTRACTED_CIR" > "$FIXED_CIR"
+    CMP_ARGS=( --layout_netlist "$(readlink -f "$FIXED_CIR")" --netlist "$(readlink -f "$EFFECTIVE_NETLIST")" --run_dir "$EXTRACT_DIR" --ignore_top_ports_mismatch )
+    CELL_NAME="$(basename "$LAYOUT" .gds)"
+    CMP_ARGS+=( --topcell "${TOPCELL:-$CELL_NAME}" )
+    python3 "$RUN_LVS_PY" "${CMP_ARGS[@]}"
+else
+    echo ">> sg13g2_lvs.sh: gds=$LAYOUT netlist=${EFFECTIVE_NETLIST:-<none>} net_only=$NET_ONLY"
+    python3 "$RUN_LVS_PY" "${ARGS[@]}"
+fi

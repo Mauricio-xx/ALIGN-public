@@ -864,22 +864,28 @@ def test_bjt_unknown_model_passes_through():
     assert translate_passive_line(line) == line
 
 
-def test_resistor_rsil_passes_through():
-    """rsil model name matches extraction -- no change needed."""
+def test_resistor_rsil_zeroes_ps():
+    """rsil: ps/b zeroed to match extraction defaults."""
     line = "R1 n1 n2 sub rsil w=0.5u l=10u ps=0.5u m=1"
     out = translate_passive_line(line)
     assert "rsil" in out
-    assert out == line
+    assert "ps=0" in out
+    assert "w=0.5u" in out
 
 
-def test_resistor_rppd_passes_through():
+def test_resistor_rppd_zeroes_ps_b():
     line = "R2 n1 n2 sub rppd w=0.5u l=10u ps=0.5u b=0 m=1"
-    assert translate_passive_line(line) == line
+    out = translate_passive_line(line)
+    assert "rppd" in out
+    assert "ps=0" in out
+    assert "b=0" in out
 
 
-def test_resistor_rhigh_passes_through():
+def test_resistor_rhigh_zeroes_ps():
     line = "R3 n1 n2 sub rhigh w=0.5u l=10u ps=0.5u b=0 m=1"
-    assert translate_passive_line(line) == line
+    out = translate_passive_line(line)
+    assert "rhigh" in out
+    assert "ps=0" in out
 
 
 def test_cap_cmim_passes_through():

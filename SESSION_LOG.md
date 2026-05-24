@@ -466,4 +466,12 @@ Branch: feature/ihp_sg13g2_pdk
   - Guard: only fires for designs with blackbox blocks (master name starts with NPN/PNP/RES_/CAP_). Does not affect standard ALIGN test circuits.
   - Result: OPEN 0, SHORT 0. All 5 nets fully connected. GDS produced.
   - Unit tests: 167 passed (1 more than before), 22 pre-existing failures, 0 new regressions.
-- 2026-05-24: Remaining: (1) automate blackbox GDS generation, (2) LVS validation on bandgap.
+- 2026-05-24: LVS validation on bandgap (translator extension):
+  - IHP LVS deck requires 3-node resistors (PLUS, MINUS, BULK) and 4-node BJTs (C, B, E, SUB). User SPICE has 2-node R and 3-node Q. Extended `translate_passive_line()` in `spice_to_ihp_lvs.py` to insert substrate/bulk terminal when node count is below expected. Configurable via `--substrate` CLI option (default: `sub!`).
+  - BJT default parameters: IHP extraction finds we/le from geometry. User SPICE without parameters gives we=0, le=0 causing parameter mismatch. Added `BJT_DEFAULT_PARAMS` dict with IHP PyCell defaults (npn13G2: we=70n, le=900n, Nx=1, m=1).
+  - Resistor ps/b zeroing: `RES_EXTRACTION_ZERO_PARAMS = {"ps", "b"}` -- KLayout extraction cannot determine ps from geometry, defaults to 0. Translator now zeros these to match.
+  - Case sensitivity workaround: KLayout SPICE reader uppercases model names (NPN13G2, RSIL) but extraction preserves original case (npn13G2, rsil). IHP's own BJT and rsil unit tests also fail from this bug. Added `--mixed-signal` mode to `sg13g2_lvs.sh` that extracts first, fixes model case in extracted .cir via sed, then compares with --layout_netlist. Pure MOS circuits unaffected (MOS model names stay lowercase in both paths).
+  - Result: bandgap LVS PASS -- "Congratulations! Netlists match." 0 errors, 0 warnings, 2 PMOS + 2 NPN + 2 rsil correctly matched.
+  - Regression: inverter_v1_sg13g2 LVS PASS (MOS-only circuits unaffected). Mock PDK firewall: 22 passed, 803 skipped, 0 failed. Translator tests: 74/74 PASS.
+  - Files modified: spice_to_ihp_lvs.py (+25/-5), test_spice_to_ihp_lvs.py (+12/-9), sg13g2_lvs.sh (+25/-2).
+- 2026-05-24: Remaining: (1) automate blackbox GDS generation, (2) commit bandgap LVS changes.

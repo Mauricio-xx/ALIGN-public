@@ -75,6 +75,26 @@ CAP_MODEL_MAP = {
 
 PASSIVE_MODEL_MAP = {**BJT_MODEL_MAP, **RES_MODEL_MAP, **CAP_MODEL_MAP}
 
+# Models whose SPICE form requires a substrate/bulk terminal that the user
+# SPICE typically omits.  IHP's LVS deck SPICE reader expects:
+#   Q  C B E <sub>  model params   (4 nodes)
+#   R  P M  <bulk>  model params   (3 nodes, poly resistors only)
+MODELS_NEEDING_SUBSTRATE = set(BJT_MODEL_MAP) | set(RES_MODEL_MAP)
+
+# IHP PyCell default BJT geometry; KLayout extraction reads these from the
+# physical layout, so the schematic must specify them to avoid a 0-vs-real
+# parameter mismatch.  Values from libs.tech/klayout/python/sg13g2_pycell_lib.
+BJT_DEFAULT_PARAMS = {
+    "npn13g2":  {"we": "70n", "le": "900n", "Nx": "1", "m": "1"},
+    "npn13g2l": {"we": "70n", "le": "1000n", "Nx": "1", "m": "1"},
+    "npn13g2v": {"we": "120n", "le": "1000n", "Nx": "1", "m": "1"},
+    "pnpmpa":   {"m": "1"},
+}
+
+# Parameters the LVS extraction defaults to 0 because they cannot be
+# inferred from geometry; the schematic must match.
+RES_EXTRACTION_ZERO_PARAMS = {"ps", "b"}
+
 # Aliases that, if present in the input, mark it as user-facing (vs LVS-ready).
 # Includes MOS aliases and BJT model names that need case normalisation.
 ALIGN_ALIAS_PATTERN = re.compile(
@@ -196,13 +216,16 @@ def translate_device_line(line: str, w_override_meters: Optional[float] = None) 
     return " ".join(new_tokens)
 
 
-def translate_passive_line(line: str) -> str:
+def translate_passive_line(line: str, substrate_net: str = "sub!") -> str:
     """Translate BJT / resistor / capacitor lines for LVS compatibility.
 
     Normalises model names to match KLayout extraction names (case-sensitive
-    for BJTs: npn13g2 -> npn13G2). Resistor and cap model names already
-    match extraction; they are recognised here so future changes can be
-    handled centrally. Non-matching lines are returned unchanged.
+    for BJTs: npn13g2 -> npn13G2). For models in MODELS_NEEDING_SUBSTRATE,
+    inserts a substrate/bulk terminal before the model token when the user
+    SPICE omits it.  IHP LVS deck requires:
+      Q  C B E sub  model params   (4 nodes for BJTs)
+      R  P M  bulk  model params   (3 nodes for poly resistors)
+    Non-matching lines are returned unchanged.
     """
     if not line.strip():
         return line
@@ -231,6 +254,34 @@ def translate_passive_line(line: str) -> str:
         return line
 
     tokens[model_idx] = new_model
+
+    model_lc = model.lower()
+    if model_lc in MODELS_NEEDING_SUBSTRATE:
+        is_bjt = head.startswith("q")
+        is_res = head.startswith("r")
+        expected_nodes = 4 if is_bjt else (3 if is_res else None)
+        if expected_nodes is not None:
+            node_count = model_idx - 1
+            if node_count < expected_nodes:
+                tokens.insert(model_idx, substrate_net)
+
+    existing_params = {
+        t.split("=", 1)[0].lower() for t in tokens if "=" in t
+    }
+
+    if head.startswith("q") and model_lc in BJT_DEFAULT_PARAMS:
+        for k, v in BJT_DEFAULT_PARAMS[model_lc].items():
+            if k.lower() not in existing_params:
+                tokens.append(f"{k}={v}")
+
+    if head.startswith("r") and model_lc in RES_MODEL_MAP:
+        tokens = [
+            t if "=" not in t or t.split("=", 1)[0].lower()
+            not in RES_EXTRACTION_ZERO_PARAMS
+            else f"{t.split('=', 1)[0]}=0"
+            for t in tokens
+        ]
+
     return " ".join(tokens)
 
 
@@ -726,6 +777,7 @@ def translate(
     topcell: str | None = None,
     power_nets=None,
     gnd_nets=None,
+    substrate_net: str = "sub!",
 ) -> str:
     """Translate a full SPICE deck. Returns the translated text.
 
@@ -805,7 +857,7 @@ def translate(
             line, w_override_meters=w_overrides.get(i)
         )
         if translated is line:
-            translated = translate_passive_line(line)
+            translated = translate_passive_line(line, substrate_net=substrate_net)
         out_lines.append(translated)
 
     return "\n".join(out_lines) + "\n"
@@ -838,6 +890,12 @@ def main(argv=None) -> int:
         help="comma-separated ground nets for dummy-device detection "
              f"(default: {','.join(sorted(DEFAULT_GROUND_NETS))})",
     )
+    ap.add_argument(
+        "--substrate", default="sub!",
+        help="substrate/bulk net name inserted for BJTs (4th node) and "
+             "poly resistors (3rd node).  Default: sub!  Use the net that "
+             "the layout extraction connects substrate to (often vdd).",
+    )
     args = ap.parse_args(argv)
 
     def _parse_nets(arg, default):
@@ -852,6 +910,7 @@ def main(argv=None) -> int:
     result = translate(
         text, suffix=args.suffix, topcell=args.topcell,
         power_nets=power_nets, gnd_nets=gnd_nets,
+        substrate_net=args.substrate,
     )
 
     if args.output:
