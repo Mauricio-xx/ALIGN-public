@@ -93,6 +93,31 @@ class Library(List[Union[Model, SubCircuit]]):
                 prefix='L'
             )
         )
+        models.append(
+            Model(
+                name='NPN',
+                pins=['C', 'B', 'E'],
+                parameters={
+                    'WE': 0,
+                    'LE': 0,
+                    'NX': 1,
+                    'M': 1,
+                },
+                prefix='Q'
+            )
+        )
+        models.append(
+            Model(
+                name='PNP',
+                pins=['C', 'B', 'E'],
+                parameters={
+                    'W': 0,
+                    'L': 0,
+                    'M': 1,
+                },
+                prefix='Q'
+            )
+        )
         return models
 
 

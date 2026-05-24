@@ -425,3 +425,16 @@ Branch: feature/ihp_sg13g2_pdk
 - 2026-05-24: Results: 74/74 translator tests PASS. Mock PDK firewall: 22 passed, 0 failed.
 - 2026-05-24: Files: spice_to_ihp_lvs.py (+111/-3), test_spice_to_ihp_lvs.py (+162), sg13g2_lvs.sh (+1/-1).
 - 2026-05-24: Next: bandgap reference circuit example (first mixed-signal test with BJT+resistor+MOS).
+
+## Phase Bandgap - First mixed-signal circuit (IN PROGRESS)
+- 2026-05-24: Scope: bandgap voltage reference combining PMOS current mirror + NPN BJTs + poly resistors.
+- 2026-05-24: Core engine changes required for mixed-signal support:
+  - align/schema/library.py: added NPN and PNP built-in model types with pins [C,B,E] and Q prefix.
+  - pdks/IHP_SG13G2_PDK/models.sp: added model declarations for npn13g2/l/v (npn base), pnpmpa (pnp base), rsil/rppd/rhigh (res base), cap_cmim/rfcmim (cap base). Pin names now correctly inherited from base models.
+  - align/compiler/gen_abstract_name.py: extended gen_primitive_def with fallback for derived models without PDK generators. Creates subcircuit primitives that gen_param routes to black_box.
+- 2026-05-24: Critical discovery: align/primitive/main.py:205 asserts `set(parameters) == gds2lef._ports` -- pin names from subcircuit MUST match GDS label names. Without proper model declarations, parser creates generic P0/P1/P2 pins that mismatch C/B/E and PLUS/MINUS labels.
+- 2026-05-24: Created examples/bandgap_ref_sg13g2/ with simplified Widlar bandgap (2 PMOS + 2 NPN + 2 rsil).
+- 2026-05-24: First successful mixed-signal P&R run: topology identifies SCM_PMOS (current mirror), NPN13G2 (black_box BJT), RES_2T (black_box resistor). GDS produced (18KB). Routing has off-grid errors (20 LVS/DRC internal) from black_box pin geometry misalignment.
+- 2026-05-24: Blackbox GDS workflow: gen_blackbox on host (klayout) -> mount in Docker with --blackbox_dir. Primitive names use gen_key hash suffix (e.g. NPN13G2_49761263, RES_2T_19160149).
+- 2026-05-24: Mock PDK firewall: 22 passed. Translator tests: 74/74. No regressions.
+- 2026-05-24: Remaining: (1) fix routing grid alignment for black_box pins, (2) LVS validation, (3) automate blackbox GDS generation.

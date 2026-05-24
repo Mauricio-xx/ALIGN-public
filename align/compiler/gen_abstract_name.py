@@ -9,7 +9,7 @@ import logging
 import pathlib
 
 
-from align.schema import SubCircuit, constraint, Library, Instance
+from align.schema import SubCircuit, constraint, Library, Instance, Model
 from .util import gen_key, get_generator
 
 logger = logging.getLogger(__name__)
@@ -113,6 +113,12 @@ class PrimitiveLibrary():
             if gen_const and not self.plib.find(generator.name):
                 self.add_primitve(generator.name)
         elif get_generator(element.model, self.pdk_dir):
+            block_arg = gen_key(element.parameters)
+            unique_name = f'{model}{block_arg}'
+            element.add_abs_name(unique_name)
+            self.add_primitve(model)
+            self.create_subckt(element, unique_name)
+        elif isinstance(generator, Model) and generator.bases:
             block_arg = gen_key(element.parameters)
             unique_name = f'{model}{block_arg}'
             element.add_abs_name(unique_name)
