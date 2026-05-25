@@ -81,17 +81,33 @@ run_docker() {
     local bbox_mount=()
     [[ -n "${BBOX_DIR:-}" ]] && bbox_mount=(-v "$BBOX_DIR:/bbox:ro")
 
+    # Resolve DESIGN_DIR: if inside REPO_ROOT, convert to relative path for
+    # Docker (REPO_ROOT is /work inside the container). Otherwise mount it.
+    local design_mount=()
+    local docker_design_dir
+    local abs_design
+    abs_design="$(cd "$DESIGN_DIR" && pwd)"
+    if [[ "$abs_design" == "$REPO_ROOT"* ]]; then
+        docker_design_dir="${abs_design#"$REPO_ROOT"/}"
+    elif [[ "$abs_design" == "$workdir"* ]]; then
+        docker_design_dir="$abs_design"
+    else
+        design_mount=(-v "$abs_design:$abs_design:ro")
+        docker_design_dir="$abs_design"
+    fi
+
     rm -rf "$workdir"
     mkdir -p "$workdir/LOG"
     docker run --rm \
         --user "$(id -u):$(id -g)" \
         -v "$REPO_ROOT:/work" -w /work \
         "${bbox_mount[@]}" \
+        "${design_mount[@]}" \
         -v "$workdir:$workdir" \
         "${OVERLAYS[@]}" \
         -e ALIGN_WORK_DIR="$workdir" \
         "$DOCKER_IMAGE" \
-        schematic2layout.py "$DESIGN_DIR" \
+        schematic2layout.py "$docker_design_dir" \
             -p pdks/IHP_SG13G2_PDK \
             -w "$workdir" \
             "${bbox_args[@]}" \
