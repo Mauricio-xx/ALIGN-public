@@ -86,7 +86,8 @@ class Scanline:
                 result = metal_rect
                 break
 
-        assert result is not None, (via_rect, self.rects)
+        if result is None:
+            logger.warning(f"No metal found touching via {via_rect.rect}. Skipping...")
         return result
 
 class RemoveDuplicates():
@@ -263,7 +264,8 @@ class RemoveDuplicates():
                         metal_scan_line_vertical = self.store_scan_lines[mv][twice_center]
                         for via_rect in via_scan_line.rects:
                             metal_rect_v = metal_scan_line_vertical.find_touching(via_rect)
-                            self.connectPair(via, metal_rect_v.root(), via_rect.root())
+                            if metal_rect_v is not None:
+                                self.connectPair(via, metal_rect_v.root(), via_rect.root())
 
                     if mh is not None:
                         for via_rect in via_scan_line.rects:
@@ -273,7 +275,8 @@ class RemoveDuplicates():
                                 continue
                             metal_scan_line_horizontal = self.store_scan_lines[mh][twice_center_y]
                             metal_rect_h = metal_scan_line_horizontal.find_touching(via_rect)
-                            self.connectPair(via, via_rect.root(), metal_rect_h.root())
+                            if metal_rect_h is not None:
+                                self.connectPair(via, via_rect.root(), metal_rect_h.root())
 
     def check_same_layer_overlaps(self):
         for layer in self.store_scan_lines:

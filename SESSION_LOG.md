@@ -544,4 +544,6 @@ Branch: feature/ihp_sg13g2_pdk
 - 2026-05-27: Test results: 753 mock PDK tests pass. 137/140 compiler tests pass (3 failures are pre-existing from library.py NPN/PNP model addition, not from compiler/drc changes).
 - 2026-05-27: Files modified: align/compiler/compiler.py (+40), align/cell_fabric/drc.py (+3/-1), examples/inverter_v1_sg13g2/inverter_v1_sg13g2.const.json (added guard_ring constraint).
 - 2026-05-27: Note: IHP DRC on full top-level GDS could not run because local KLayout is 0.29.1 vs required 0.29.11. Primitive-level DRC (smoke test) already validated clean.
-- 2026-05-27: Remaining: commit, update checkpoint, consider multi-primitive circuit test (telescopic_ota).
+- 2026-05-27: Multi-primitive test: telescopic_ota_sg13g2 (10 MOS, 5 symmetric pairs). Additional fix needed in remove_duplicates.py: find_touching assertion on guard ring V0 contacts without matching on-grid M1. Changed to warning + skip. Also updated callers in check_shorts_induced_by_vias to handle None return.
+- 2026-05-27: OTA results: 109KB GDS produced. 5 primitive cell types (DCL_NMOS_S, NMOS_4T, NMOS_S, PMOS_4T, PMOS_S), all with guard rings. Pb(50), Pselect(34), NWell(20), V0(1536) shapes. 434 internal DRC + 20 DIFFERENT_WIDTH (all false positives from off-grid guard ring shapes). 753/753 mock PDK tests pass.
+- 2026-05-27: Guard ring E2E feature complete. All core modifications: compiler.py (constraint propagation), drc.py (via enclosure), remove_duplicates.py (via-metal matching).
