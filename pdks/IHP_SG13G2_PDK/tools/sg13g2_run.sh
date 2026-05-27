@@ -98,7 +98,13 @@ run_docker() {
 
     rm -rf "$workdir"
     mkdir -p "$workdir/LOG"
+
+    DOCKER_RESOURCE_FLAGS=()
+    [[ -n "${ALIGN_DOCKER_CPUS:-}" ]] && DOCKER_RESOURCE_FLAGS+=(--cpus "$ALIGN_DOCKER_CPUS")
+    [[ -n "${ALIGN_DOCKER_MEMORY:-}" ]] && DOCKER_RESOURCE_FLAGS+=(--memory "$ALIGN_DOCKER_MEMORY")
+
     docker run --rm \
+        "${DOCKER_RESOURCE_FLAGS[@]}" \
         --user "$(id -u):$(id -g)" \
         -v "$REPO_ROOT:/work" -w /work \
         "${bbox_mount[@]}" \

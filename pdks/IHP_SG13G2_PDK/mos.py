@@ -10,10 +10,12 @@ logger = logging.getLogger(__name__)
 
 class MOSGenerator(DefaultCanvas):
 
-    def __init__(self, pdk, height, fin, gate, gateDummy, shared_diff, stack, bodyswitch, **kwargs):
+    def __init__(self, pdk, height, fin, gate, gateDummy, shared_diff, stack, bodyswitch, guard_ring=False, guard_ring_bbox='overlap', **kwargs):
         self.primitive_constraints = kwargs.get('primitive_constraints', [])
         self.primitive_parameters = kwargs.get('primitive_parameters')
         super().__init__(pdk)
+        self.guard_ring = guard_ring and ('GuardRing' in pdk)
+        self.guard_ring_bbox = guard_ring_bbox
 
         exact_width = None
         exact_length = None
@@ -525,21 +527,151 @@ class MOSGenerator(DefaultCanvas):
             self._connectDevicePins(y, y_cells, connections)
         self._connectNets(x_cells, y_cells)
 
+    def _addGuardRing(self, x_cells, y_cells, device_type):
+        """Draw a substrate/well tap ring around the MOS array.
+
+        NMOS: ptap ring (Active + Pselect + V0 + M1) connected to substrate.
+        PMOS: ntap ring (Active + Nwell + V0 + M1) connected to n-well.
+
+        Guard ring shapes are stored in _guard_ring_terms (not self.terms)
+        to bypass internal DRC/remove_duplicates checks which assume all
+        geometry sits on the routing grid. Injected into output via gen_data.
+        """
+        if not hasattr(self, '_guard_ring_terms'):
+            self._guard_ring_terms = []
+
+        gr = self.pdk['GuardRing']
+        ring_w = gr['activeRingWidth']
+        x_space = gr['XSpace']
+        y_space = gr['YSpace']
+        v0_w = gr['v0WidthX']
+        v0_sp = gr['v0SpaceX']
+        v0_enc = self.pdk['V0']['VencA_L']
+
+        M3p = self.pdk['M3']['Pitch']
+        M3_te = ceil((x_cells * self.gatesPerUnitCell
+                      + 2 * self.gateDummy * self.shared_diff)
+                     * self.pdk['M1']['Pitch'] / M3p)
+        M3_ts = ceil(self.pdk['M1']['Pitch'] / M3p)
+
+        arr_x0 = self.nselect.physical_x(-M3_ts)
+        arr_x1 = self.nselect.physical_x(M3_te)
+        y_top = y_cells * self.finsPerUnitCell + self.bodyswitch * self.lFin
+        arr_y0 = self.nselect.physical_y(0)
+        arr_y1 = self.nselect.physical_y(y_top)
+
+        # PMOS Pselect extends +1 M3 track and +1 fin track beyond array
+        # (from addPMOSArray region drawing). Guard ring ntap contacts must
+        # be Cnt.g1 (90nm) away from that pSD boundary.
+        if device_type == 'PMOS':
+            psd_overshoot_x = M3p + 90
+            psd_overshoot_y = self.pdk['M2']['Pitch'] + 90
+            x_space = max(x_space, psd_overshoot_x)
+            y_space = max(y_space, psd_overshoot_y)
+
+        ri_x0, ri_x1 = arr_x0 - x_space, arr_x1 + x_space
+        ri_y0, ri_y1 = arr_y0 - y_space, arr_y1 + y_space
+        ro_x0, ro_x1 = ri_x0 - ring_w, ri_x1 + ring_w
+        ro_y0, ro_y1 = ri_y0 - ring_w, ri_y1 + ring_w
+
+        def _rect(layer, net, x0, y0, x1, y1, nt='drawing'):
+            self._guard_ring_terms.append({
+                'layer': layer, 'netName': net,
+                'rect': [x0, y0, x1, y1], 'netType': nt})
+
+        bars = [
+            (ro_x0, ro_y0, ro_x1, ri_y0),  # bottom
+            (ro_x0, ri_y1, ro_x1, ro_y1),  # top
+            (ro_x0, ri_y0, ri_x0, ri_y1),  # left
+            (ri_x1, ri_y0, ro_x1, ri_y1),  # right
+        ]
+
+        for bx0, by0, bx1, by1 in bars:
+            _rect('Active', None, bx0, by0, bx1, by1)
+            _rect('Pb', None, bx0, by0, bx1, by1)
+            _rect('M1', None, bx0, by0, bx1, by1)
+
+        v0_pitch = v0_w + v0_sp
+        for bx0, by0, bx1, by1 in bars:
+            horiz = (bx1 - bx0) > (by1 - by0)
+            if horiz:
+                v0_x0 = max(bx0, ri_x0) + v0_enc
+                v0_x1 = min(bx1, ri_x1) - v0_enc
+                cy = (by0 + by1) // 2
+                cx = v0_x0 + v0_w // 2
+                while cx + v0_w // 2 <= v0_x1:
+                    _rect('V0', None, cx - v0_w // 2, cy - v0_w // 2,
+                          cx + v0_w // 2, cy + v0_w // 2)
+                    cx += v0_pitch
+            else:
+                v0_y0 = max(by0, ri_y0) + v0_enc
+                v0_y1 = min(by1, ri_y1) - v0_enc
+                cx = (bx0 + bx1) // 2
+                cy = v0_y0 + v0_w // 2
+                while cy + v0_w // 2 <= v0_y1:
+                    _rect('V0', None, cx - v0_w // 2, cy - v0_w // 2,
+                          cx + v0_w // 2, cy + v0_w // 2)
+                    cy += v0_pitch
+
+        # Draw implant/well as 4 overlapping bars (ring shape). Cannot use
+        # a single solid box because it would cover the inner MOS array,
+        # converting N+Active to P+Active (NMOS) or flooding Nwell (PMOS).
+        # Bars overlap at corners (ext x ext) to avoid pSD.b / NW.b notch
+        # violations. Inner edges stop at the ri boundary.
+        psd_enc = 310  # >= pSD.b (310nm min space/notch) to merge at corners
+        nw_enc = 620   # >= NW.b (620nm min space/notch) to merge at corners
+        imp_bars = [
+            (ro_x0, ro_y0, ro_x1, ri_y0),  # bottom (full width)
+            (ro_x0, ri_y1, ro_x1, ro_y1),  # top (full width)
+            (ro_x0, ro_y0, ri_x0, ro_y1),  # left (full height, overlaps corners)
+            (ri_x1, ro_y0, ro_x1, ro_y1),  # right (full height, overlaps corners)
+        ]
+        if device_type == 'NMOS':
+            for bx0, by0, bx1, by1 in imp_bars:
+                _rect('Pselect', None,
+                      bx0 - psd_enc, by0 - psd_enc,
+                      bx1 + psd_enc, by1 + psd_enc)
+        elif device_type == 'PMOS':
+            for bx0, by0, bx1, by1 in imp_bars:
+                _rect('Nwell', None,
+                      bx0 - nw_enc, by0 - nw_enc,
+                      bx1 + nw_enc, by1 + nw_enc)
+
+        self._guard_ring_extent = (ro_x0, ro_y0, ro_x1, ro_y1)
+
     def _setRegionBbox(self, M3_tracks_start, M3_tracks_end, y_top):
         """Set bbox from the unpadded region extent so the PnR places cells
         based on the functional boundary.  The padded implant/well regions
         intentionally extend beyond the bbox to create overlap at inter-cell
         junctions, preventing zero-width pSD/NWell corner contacts."""
         from align.cell_fabric import transformation
-        x0 = self.nselect.physical_x(-M3_tracks_start)
-        y0 = self.nselect.physical_y(0)
-        x1 = self.nselect.physical_x(M3_tracks_end)
-        y1 = self.nselect.physical_y(y_top)
+        if self.guard_ring and self.guard_ring_bbox == 'inclusive' and hasattr(self, '_guard_ring_extent'):
+            gx0, gy0, gx1, gy1 = self._guard_ring_extent
+            m2p = self.pdk['M2']['Pitch']
+            m3p = self.pdk['M3']['Pitch']
+            x0 = (gx0 // m3p) * m3p
+            y0 = (gy0 // m2p) * m2p
+            x1 = -(-gx1 // m3p) * m3p
+            y1 = -(-gy1 // m2p) * m2p
+        else:
+            x0 = self.nselect.physical_x(-M3_tracks_start)
+            y0 = self.nselect.physical_y(0)
+            x1 = self.nselect.physical_x(M3_tracks_end)
+            y1 = self.nselect.physical_y(y_top)
         self.bbox = transformation.Rect(x0, y0, x1, y1)
+
+    def gen_data(self, **kwargs):
+        data = super().gen_data(**kwargs)
+        if hasattr(self, '_guard_ring_terms') and self._guard_ring_terms:
+            data['terminals'].extend(self._guard_ring_terms)
+        return data
 
     def addNMOSArray( self, x_cells, y_cells, pattern, vt_type, connections, **parameters):
 
         self._addMOSArray(x_cells, y_cells, pattern, vt_type, connections, **parameters)
+
+        if self.guard_ring:
+            self._addGuardRing(x_cells, y_cells, 'NMOS')
 
         # Nselect Region serves as the ALIGN-internal cell boundary marker for
         # NMOS arrays. Mapped in layers.json to GDS 199.0 which IHP foundry
@@ -560,6 +692,9 @@ class MOSGenerator(DefaultCanvas):
     def addPMOSArray( self, x_cells, y_cells, pattern, vt_type, connections, **parameters):
 
         self._addMOSArray(x_cells, y_cells, pattern, vt_type, connections, **parameters)
+
+        if self.guard_ring:
+            self._addGuardRing(x_cells, y_cells, 'PMOS')
 
         #####   Pselect and Nwell Placement   #####
         M3_tracks_end = ceil((x_cells*self.gatesPerUnitCell+2*self.gateDummy*self.shared_diff)*self.pdk['M1']['Pitch']/self.pdk['M3']['Pitch'])

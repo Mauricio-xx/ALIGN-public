@@ -626,6 +626,17 @@
             "m1Width": 160,
             "m2Width": 280,
             "m3Width": 280
+        },
+        {
+            "_comment": "Guard ring design rules for substrate/well tap rings around MOS primitives. activeRingWidth=300 matches IHP activebWidth (V0 160 + 2*VencA 70). XSpace/YSpace=1 pitch separation from array edge.",
+            "Layer": "GuardRing",
+            "activeRingWidth": 300,
+            "activeRing_enclosure": 500,
+            "viaArray": 4,
+            "v0SpaceX": 180,
+            "v0WidthX": 160,
+            "XSpace": 510,
+            "YSpace": 560
         }
     ]
 }

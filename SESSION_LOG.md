@@ -499,3 +499,38 @@ Branch: feature/ihp_sg13g2_pdk
 - 2026-05-24: E2E results: GDS produced (67K), SHORT: 0, OPEN: 0. LVS PASS (0 errors, 0 warnings). 8 devices matched: 3 NMOS + 3 PMOS + 2 RSIL.
 - 2026-05-24: Regressions: bandgap LVS PASS, inverter GDS clean, translator 74/74 PASS.
 - 2026-05-24: Files: examples/ldo_sg13g2/ (new), gen_blackbox/polyres.py (pin alignment fix).
+
+## Phase Prodigious - Analog design automation framework (IN PROGRESS)
+- 2026-05-25: Architecture discussion: closed-loop parasitic-aware analog design automation combining ALIGN fork + klayout-pex + VACASK/ngspice + Palace EM + ihp-gmid-kit + eda-agents.
+- 2026-05-25: Explored all dependency projects: eda-agents (CircuitTopology, SpiceRunner, AutoresearchRunner, PdkConfig), SAR project (pipeline_v0.1, VACASK CI harness, Palace EM, run_pex.sh), ihp-gmid-kit (gm/ID LUTs, mosplot), VACASK simulator (/usr/bin/vacask, .sim format).
+- 2026-05-25: Architecture plan approved: three-tier pipeline (Tier 1 fast presim, Tier 2 layout+PEX, Tier 3 EM). Dual simulator (VACASK + ngspice). New standalone repo.
+- 2026-05-25: Phase 0 scaffold complete at /home/montanares/personal_exp/prodigious/. Pipeline engine, CircuitSpec, SimulatorBackend ABC, env resolver, LDO spec, CLI, 6/6 tests. Commits: 03bb936, 3f59fc9.
+- 2026-05-25: User direction: don't pursue autonomous loop yet. Priority is solid engine combining ALIGN + PEX (one-shot pipeline).
+- 2026-05-25: ALIGN adapter (tools/align_adapter.py) wrapping sg13g2_run.sh via Docker, two-pass blackbox flow detection. LayoutStage wired to real adapter. Commit 2b639c2.
+- 2026-05-25: PEX adapter (tools/pex_adapter.py) wrapping kpex CLI from klayout-pex-venv, auto M$->X$ netlist fixup. PexStage wired to real adapter. Commit 2b639c2.
+- 2026-05-25: NgspiceBackend (sim/ngspice.py) wrapping eda-agents SpiceRunner with fallback to raw subprocess + stdout meas parsing. VacaskBackend (sim/vacask.py) invoking /usr/bin/vacask with SIM_INCLUDE_PATH/SIM_MODULE_PATH for IHP PDK. rawfile.py vendorized for .raw parsing. Commit ee0f3df.
+- 2026-05-25: Registry updated: build_layout_stage/build_pex_stage use real adapters when env paths found, fall back to stubs. ProdigiousEnv gains vacask_pdk_dir field. 41/41 tests passing.
+- 2026-05-25: NetlistGenStage (stages/netlist_gen.py) renders Jinja2 testbench templates per simulator. PreSimStage/PostSimStage (stages/pre_sim.py, post_sim.py) invoke configured backend and extract measurements. CompareStage (stages/compare.py) diffs pre/post metrics with tolerance gates. Commit e391880.
+- 2026-05-25: LDO testbenches written: tb_ac.sp.j2 (ngspice: .lib + .meas AC for loop gain/PM/PSRR/dropout) and tb_ac.sim.j2 (VACASK: include cornerMOSlv/cornerRES + embedded Python postprocessor). CLI gains --simulator {ngspice,vacask} flag.
+- 2026-05-25: 8 of 13 stages now real (only sizing, drc, lvs still stubs in Tier 1+2). 52/52 tests.
+- Next: end-to-end pre_sim validation with real ngspice, install eda-agents in prodigious venv, SizingStage with gm/ID.
+- Checkpoint: .claude/checkpoints/sg13g2-phase-prodigious-adapters.md.
+
+## Phase GuardRing - Substrate/well tap rings for MOS primitives (DONE, full DoD)
+- 2026-05-27: Scope: add guard ring generation to MOS primitives. Guard rings are substrate/well tap rings (Active + V0 + M1 + Pselect/Nwell) that improve noise isolation and latchup immunity.
+- 2026-05-27: align/primitive/main.py: extract guard_ring (bool, default False) and guard_ring_bbox (str, default 'overlap') from Generator constraint parameters dict. Pass to MOSGenerator constructor. No schema changes needed (Generator.parameters is free-form dict).
+- 2026-05-27: pdks/IHP_SG13G2_PDK/mos.py: new _addGuardRing(x_cells, y_cells, device_type) method (~70 lines). Computes ring geometry from PDK GuardRing table + array extent. Draws Active+Pb+M1 bars, V0 contacts with corner-aware clipping, and Pselect (NMOS) or Nwell (PMOS) as 4 overlapping ring-shaped bars. Called from addNMOSArray and addPMOSArray when self.guard_ring is True.
+- 2026-05-27: Key design decision: guard ring shapes stored in _guard_ring_terms (not self.terms) and injected via gen_data override. Bypasses ALIGN's internal DRC/remove_duplicates which assume all geometry is on the routing grid. Guard ring shapes are inherently off-grid (distances set by DRC rules, not routing pitch).
+- 2026-05-27: V0 corner clipping: horizontal bar V0s restricted to [ri_x0, ri_x1] and vertical bar V0s to [ri_y0, ri_y1] to avoid ScanLine algorithm false-matching V0s with wrong M1 bars at corner overlaps.
+- 2026-05-27: Pselect/Nwell drawn as 4 overlapping bars (not solid box) to avoid covering inner MOS array. Extensions: psd_enc=310nm (>= pSD.b min space/notch), nw_enc=620nm (>= NW.b min space/notch). Bars overlap at corners to prevent notch DRC violations.
+- 2026-05-27: PMOS dynamic spacing: guard ring inner boundary pushed out by max(XSpace, M3_pitch+90) to ensure Cnt.g1 (90nm pSD-to-V0) clearance from the extended Pselect region of the PMOS array.
+- 2026-05-27: _setRegionBbox: 'overlap' mode (default) uses unpadded array bbox; 'inclusive' mode uses guard ring outer extent snapped to M2/M3 grid for LEF grid-alignment assertion.
+- 2026-05-27: layers.json: GuardRing section with activeRingWidth=300, XSpace=510, YSpace=560, v0WidthX=160, v0SpaceX=180.
+- 2026-05-27: gen_blackbox/klayout_runner.py: fallback for _tkinter-less klayout (Nix). Retries with sys.executable + klayout.db pya alias when klayout -zz fails with _tkinter error.
+- 2026-05-27: Smoke test: 5/5 PASS (DP_NMOS/PMOS/SCM with GR, NMOS without GR baseline, NMOS inclusive bbox). 0 shorts, 0 opens, 0 different_widths, 0 internal DRC across all.
+- 2026-05-27: IHP DRC prototype: 0 violations on both NMOS and PMOS guard ring primitives.
+- 2026-05-27: LVS net_only: 2 devices extracted correctly for both NMOS (sg13_lv_nmos) and PMOS (sg13_lv_pmos) guard ring primitives. Guard ring recognized as ptap/ntap, no spurious devices.
+- 2026-05-27: Mock PDK firewall: 22 passed, 803 skipped, 0 failed. Translator tests: 74/74 PASS.
+- 2026-05-27: Files modified: align/primitive/main.py (+8/-1), pdks/IHP_SG13G2_PDK/mos.py (+113/-5), pdks/IHP_SG13G2_PDK/layers.json (+11), pdks/IHP_SG13G2_PDK/gen_blackbox/klayout_runner.py (+44/-6).
+- 2026-05-27: Usage: add `{"constraint": "Generator", "name": "mos", "parameters": {"guard_ring": true}}` to circuit .const.json.
+- 2026-05-27: Remaining deuda: (1) end-to-end circuit test with guard ring constraint via schematic2layout, (2) Prodigious framework continuation.

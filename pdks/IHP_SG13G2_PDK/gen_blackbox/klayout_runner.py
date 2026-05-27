@@ -39,10 +39,28 @@ def _ihp_klayout_root() -> Path:
 def run_klayout_script(script_body: str, log_prefix: str = "klayout") -> str:
     """Execute a klayout python script in batch mode with an isolated env.
 
+    Prefers the klayout CLI binary in batch mode (-zz).  When the binary's
+    embedded Python lacks _tkinter (common with Nix klayout), falls back to
+    running the script with the current ``sys.executable`` after aliasing
+    ``klayout.db`` as ``pya``.
+
     Returns combined stdout+stderr on success; raises KLayoutRunError otherwise.
     """
     klayout_bin = os.environ.get("KLAYOUT_BIN", "klayout")
     klayout_root = _ihp_klayout_root()
+
+    preamble = (
+        "import sys, os\n"
+        "if 'pya' not in sys.modules:\n"
+        "    try:\n"
+        "        import klayout.db as _pya\n"
+        "        sys.modules['pya'] = _pya\n"
+        "    except ImportError:\n"
+        "        pass\n"
+        f"sys.path.insert(0, {str(klayout_root / 'python')!r})\n"
+        f"sys.path.insert(0, {str(klayout_root / 'python' / 'pycell4klayout-api' / 'source' / 'python')!r})\n"
+        f"os.environ['IHP_PDK_ROOT'] = os.environ.get('IHP_PDK_ROOT', {os.environ.get('IHP_PDK_ROOT', '')!r})\n"
+    )
 
     with tempfile.TemporaryDirectory(prefix="klayout_isolated_") as klayout_home:
         with tempfile.NamedTemporaryFile(
@@ -54,6 +72,7 @@ def run_klayout_script(script_body: str, log_prefix: str = "klayout") -> str:
             env = os.environ.copy()
             env["KLAYOUT_HOME"] = klayout_home
             env["KLAYOUT_PATH"] = str(klayout_root)
+
             proc = subprocess.run(
                 [klayout_bin, "-zz", "-r", script_path],
                 env=env,
@@ -61,19 +80,38 @@ def run_klayout_script(script_body: str, log_prefix: str = "klayout") -> str:
                 text=True,
                 timeout=120,
             )
+
+            output = (proc.stdout or "") + (proc.stderr or "")
+            has_real_error = any(
+                "ERROR" in ln and "_tkinter" not in ln
+                for ln in output.splitlines()
+            )
+
+            if proc.returncode != 0 or has_real_error:
+                with open(script_path, "w") as fh2:
+                    fh2.write(preamble + script_body)
+
+                proc = subprocess.run(
+                    [sys.executable, script_path],
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                output = (proc.stdout or "") + (proc.stderr or "")
         finally:
             try:
                 os.unlink(script_path)
             except OSError:
                 pass
 
-    output = (proc.stdout or "") + (proc.stderr or "")
     if proc.returncode != 0:
         raise KLayoutRunError(
             f"klayout exited with code {proc.returncode}\n--- output ---\n{output}"
         )
-    if "ERROR" in output:
-        raise KLayoutRunError(f"klayout reported ERROR:\n--- output ---\n{output}")
+    for line in output.splitlines():
+        if "ERROR" in line and "_tkinter" not in line:
+            raise KLayoutRunError(f"klayout reported ERROR:\n--- output ---\n{output}")
     return output
 
 

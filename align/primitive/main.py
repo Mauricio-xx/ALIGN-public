@@ -32,6 +32,8 @@ def generate_MOS_primitive(pdkdir, block_name, primitive, height, nfin, x_cells,
     gen_const = [const for const in primitive.constraints if isinstance(const, constraint.Generator)]
     input_pattern = None
     exact_patterns = None
+    guard_ring = False
+    guard_ring_bbox = 'overlap'
     if gen_const:
         gen_const=gen_const[-1]
     logger.debug(f"gen const {gen_const}")
@@ -47,7 +49,11 @@ def generate_MOS_primitive(pdkdir, block_name, primitive, height, nfin, x_cells,
                 height = gen_const.parameters["height"]
             if "exact_patterns" in gen_const.parameters.keys():
                 exact_patterns = gen_const.parameters["exact_patterns"]
-    uc = generator(pdk, height, fin, gate, gateDummy, shared_diff, stack, bodyswitch, primitive_parameters=parameters, primitive_constraints=primitive.constraints)
+            if "guard_ring" in gen_const.parameters.keys():
+                guard_ring = gen_const.parameters["guard_ring"]
+            if "guard_ring_bbox" in gen_const.parameters.keys():
+                guard_ring_bbox = gen_const.parameters["guard_ring_bbox"]
+    uc = generator(pdk, height, fin, gate, gateDummy, shared_diff, stack, bodyswitch, guard_ring=guard_ring, guard_ring_bbox=guard_ring_bbox, primitive_parameters=parameters, primitive_constraints=primitive.constraints)
 
     # Default pattern values
     if not input_pattern:
