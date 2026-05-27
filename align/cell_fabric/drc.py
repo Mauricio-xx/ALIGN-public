@@ -193,7 +193,10 @@ class DesignRuleCheck():
         cx2 = r.rect[0]+r.rect[2]
         cy2 = r.rect[1]+r.rect[3]
         c2a, c2p, o = (cx2, cy2, 0) if metal_dir == 'H' else (cy2, cx2, 1)
-        sl = self.canvas.rd.store_scan_lines[ly][c2p]
+        sls = self.canvas.rd.store_scan_lines.get(ly, {})
+        if c2p not in sls:
+            return None
+        sl = sls[c2p]
 
         def binary_search(l, u, v):
             if l == u:

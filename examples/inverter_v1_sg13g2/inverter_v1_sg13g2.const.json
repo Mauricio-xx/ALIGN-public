@@ -1,5 +1,6 @@
 [
     {"constraint": "PowerPorts", "ports": ["VDD"]},
     {"constraint": "GroundPorts", "ports": ["0"]},
-    {"constraint": "ConfigureCompiler", "auto_constraint": false}
+    {"constraint": "ConfigureCompiler", "auto_constraint": false},
+    {"constraint": "Generator", "name": "mos", "parameters": {"guard_ring": true}}
 ]

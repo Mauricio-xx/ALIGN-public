@@ -2,6 +2,7 @@ import pathlib
 import json
 
 from ..schema import SubCircuit, constraint
+from ..schema.types import set_context
 from .preprocess import preprocess_stack_parallel
 from .create_database import CreateDatabase
 from .read_library import read_lib, read_models, order_lib
@@ -14,6 +15,48 @@ import logging
 
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_toplevel_generator_params(ckt_data, design_name):
+    """Extract Generator constraints with parameters from the top-level design.
+
+    Users place Generator constraints on the top-level to configure all
+    matching primitives (e.g. guard_ring).  If left on the top-level,
+    gen_primitive_collateral and compiler_output skip the entire design.
+    Strip them here and return a mapping {gen_name_upper: params_dict}
+    so they can be merged into primitive-level Generator constraints
+    after identification.
+    """
+    top_ckt = ckt_data.find(design_name.upper())
+    params_by_gen = {}
+    if not top_ckt:
+        return params_by_gen
+    remove = [c for c in top_ckt.constraints
+              if isinstance(c, constraint.Generator) and c.parameters]
+    for c in remove:
+        params_by_gen[c.name.upper()] = dict(c.parameters)
+        top_ckt.constraints.remove(c)
+    return params_by_gen
+
+
+def _propagate_generator_params(primitives, params_by_gen):
+    """Merge extracted top-level parameters into primitive Generator constraints."""
+    for prim in primitives:
+        if not isinstance(prim, SubCircuit):
+            continue
+        old_gc = [c for c in prim.constraints if isinstance(c, constraint.Generator)]
+        for gc in old_gc:
+            if not gc.name:
+                continue
+            extra = params_by_gen.get(gc.name.upper())
+            if not extra:
+                continue
+            merged = dict(gc.parameters or {})
+            merged.update(extra)
+            prim.constraints.remove(gc)
+            with set_context(prim.constraints):
+                prim.constraints.append(
+                    constraint.Generator(name=gc.name, parameters=merged))
 
 
 def generate_hierarchy(
@@ -31,8 +74,15 @@ def generate_hierarchy(
         config_path,
         flatten_heirarchy
     )
+
+    params_by_gen = _extract_toplevel_generator_params(ckt_data, design_name)
+
     annotate_library(ckt_data, primitive_library)
     primitives = PrimitiveLibrary(ckt_data, pdk_dir).gen_primitive_collateral()
+
+    if params_by_gen:
+        _propagate_generator_params(primitives, params_by_gen)
+
     constraint_generator(ckt_data)
     compiler_output(ckt_data, design_name, output_dir, primitives)
 
