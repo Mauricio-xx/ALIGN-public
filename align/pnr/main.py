@@ -194,6 +194,56 @@ def gen_leaf_collateral( leaves, primitives, primitive_dir):
 
     return leaf_collateral
 
+def _enforce_consistent_axis_parity(leaf_collateral, primitives, pdk_dir):
+    """Force a consistent self-symmetry-axis parity across primitive variants.
+
+    A self-sym block's symmetry axis = corner + W/2, with the corner snapped to
+    the M3 routing grid (x_pitch). W an EVEN multiple of x_pitch puts the axis
+    on-grid; an ODD multiple puts it on a half-grid line. Self-sym blocks of
+    MIXED parity cannot share one axis -> placement ILP is infeasible. sg13g2
+    MOS primitives are almost all naturally odd; the few even variants are the
+    odd ones out. Drop the even variants of any abstract template that also
+    offers an odd variant, so every block can share a common (half-grid) axis
+    WITHOUT padding the bbox off the device center. Never drop a template's last
+    variant."""
+    import json, re
+    try:
+        layers = json.loads((pathlib.Path(pdk_dir) / 'layers.json').read_text())
+        x_pitch = next(L['Pitch'] for L in layers['Abstraction'] if L.get('Layer') == 'M3')
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning(f'axis-parity filter: cannot read M3 pitch ({e}); skipping')
+        return
+
+    def parity(concrete):
+        files = leaf_collateral.get(concrete, {})
+        lef = files.get('.placement_lef') or files.get('.lef')
+        if not lef:
+            return None
+        m = re.search(r'SIZE\s+([\d.]+)\s+BY', pathlib.Path(lef).read_text())
+        if not m:
+            return None
+        w = float(m.group(1))
+        if w < 1000:  # microns -> db units (leaf lefs are nm, wrapper lefs microns)
+            w *= 1000
+        return (round(w) // x_pitch) % 2
+
+    by_atn = defaultdict(list)
+    for c, v in primitives.items():
+        if v.get('concrete_template_name') == c and v.get('abstract_template_name'):
+            by_atn[v['abstract_template_name']].append(c)
+
+    drop = set()
+    for atn, concretes in by_atn.items():
+        pars = {c: parity(c) for c in concretes}
+        odd = [c for c in concretes if pars[c] == 1]
+        even = [c for c in concretes if pars[c] == 0]
+        if odd and even:
+            logger.info(f'axis-parity filter: {atn}: keep odd {odd}, drop even {even}')
+            drop.update(even)
+    for c in drop:
+        primitives.pop(c, None)
+        leaf_collateral.pop(c, None)
+
 def write_verilog_d(verilog_d):
     return {"modules":[{"name":m.name,
                         "parameters": list(m.parameters),
@@ -245,6 +295,7 @@ def generate_pnr(topology_dir, primitive_dir, pdk_dir, output_dir, subckt, *, pr
         leaves, capacitors = gen_leaf_cell_info( verilog_d, pnr_const_ds)
 
         leaf_collateral = gen_leaf_collateral( leaves, primitives, primitive_dir)
+        _enforce_consistent_axis_parity( leaf_collateral, primitives, pdk_dir)
         logger.debug(f'primitives: {primitives}')
         logger.debug( f'leaf_collateral: {leaf_collateral}')
         logger.debug( f'capacitors: {dict(capacitors)}')
