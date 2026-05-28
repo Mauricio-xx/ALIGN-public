@@ -1,0 +1,25 @@
+FROM darpaalign/align-public:latest
+
+COPY PlaceRouteHierFlow/placer/SeqPair.cpp /tmp/patches/SeqPair.cpp
+COPY PlaceRouteHierFlow/placer/ILP_solver.cpp /tmp/patches/ILP_solver.cpp
+COPY align/cmdline.py /tmp/patches/cmdline.py
+
+RUN SITE=/usr/local/lib/python3.10/dist-packages && \
+    cp /tmp/patches/cmdline.py $SITE/align/cmdline.py && \
+    ALIGN_SRC=$(pip show align-analoglayout 2>/dev/null | grep Location | cut -d' ' -f2) && \
+    SKBUILD=$(find / -path "*/_skbuild/*/cmake-build" -type d 2>/dev/null | head -1) && \
+    if [ -n "$SKBUILD" ]; then \
+      cp /tmp/patches/SeqPair.cpp $(find / -path "*/placer/SeqPair.cpp" -not -path "/tmp/*" -not -path "/work/*" 2>/dev/null | head -1) && \
+      cp /tmp/patches/ILP_solver.cpp $(find / -path "*/placer/ILP_solver.cpp" -not -path "/tmp/*" -not -path "/work/*" 2>/dev/null | head -1) && \
+      cd $SKBUILD && cmake --build . --target PnR -- -j$(nproc) && \
+      find . -name "PnR*.so" -exec cp {} $SITE/align/ \; ; \
+    else \
+      echo "No _skbuild found, attempting pip rebuild" && \
+      cd /tmp && git clone --depth 1 file:///work ALIGN-rebuild 2>/dev/null || \
+      (mkdir -p ALIGN-rebuild && cp -r /work/PlaceRouteHierFlow /work/setup.py /work/CMakeLists.txt /work/align ALIGN-rebuild/) && \
+      cd ALIGN-rebuild && BUILD_TYPE=Release pip install -v . --no-deps 2>&1 | tail -20 ; \
+    fi
+
+RUN rm -rf /tmp/patches /tmp/ALIGN-rebuild
+
+WORKDIR /work
