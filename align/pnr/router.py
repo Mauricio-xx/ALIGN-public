@@ -24,6 +24,16 @@ Omark, NType = PnR.Omark, PnR.NType
 TransformType = PnR.TransformType
 
 
+def _malloc_trim():
+    import gc
+    import ctypes
+    gc.collect()
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
+
+
 def _make_contact(metal, llx, lly, urx, ury):
     c = PnR.contact()
     c.metal = metal
@@ -457,7 +467,7 @@ def router_driver(*, cap_map, cap_lef_s,
                   nroutings, primitives, toplevel_args_d, results_dir, verilog_ds_to_run):
 
     fpath = toplevel_args_d['input_dir']
-        
+
     res_dict = {}
     for concrete_top_name, scaled_placement_verilog_d in verilog_ds_to_run:
 
@@ -513,7 +523,9 @@ def router_driver(*, cap_map, cap_lef_s,
         # create a fresh DB and populate it with a placement verilog d    
 
         if router_mode in ['top_down', 'bottom_up']:
+            _malloc_trim()
             DB, new_verilog_d, new_fpath, opath, _, _ = gen_DB_verilog_d(toplevel_args_d, results_dir, verilog_d_in=abstract_verilog_d, map_d_in=map_d_in, lef_s_in=lef_s_in)
+            _malloc_trim()
 
             assert new_verilog_d == abstract_verilog_d
 

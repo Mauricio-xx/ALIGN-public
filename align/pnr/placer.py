@@ -17,6 +17,16 @@ from .build_pnr_model import gen_DB_verilog_d
 logger = logging.getLogger(__name__)
 
 
+def _malloc_trim():
+    import gc
+    import ctypes
+    gc.collect()
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
+
+
 def _snap_to_grid(value, pitch):
     return round(value / pitch) * pitch
 
@@ -193,6 +203,9 @@ def place( *, DB, opath, fpath, numLayout, effort, idx, lambda_coeff, select_in_
 
     DB.hierTree[idx].numPlacement = actualNumLayout
 
+    del curr_plc
+    _malloc_trim()
+
 def subset_verilog_d( verilog_d, nm):
     # Should be an abstract verilog_d; no concrete_instance_names
 
@@ -359,6 +372,8 @@ def process_placements(*, DB, verilog_d, lambda_coeff, scale_factor, opath):
             hN = DB.CheckoutHierNode( idx, sel)
             placement_verilog_d = gen_placement_verilog( hN, idx, sel, DB, s_verilog_d)
             per_placement( placement_verilog_d, hN=hN, scale_factor=scale_factor, opath=opath, placement_verilog_alternatives=placement_verilog_alternatives, is_toplevel=is_toplevel, metrics=metrics)
+            del hN, placement_verilog_d
+            _malloc_trim()
 
     leaf_map = gen_leaf_map(DB=DB)
     top_level = DB.hierTree[TraverseOrder[-1]].name
@@ -454,6 +469,7 @@ def hierarchical_place(*, DB, opath, fpath, numLayout, effort, verilog_d,
         update_grid_constraints(grid_constraints, DB, idx, verilog_d, primitives, scale_factor)
 
 
+    _malloc_trim()
     top_level, leaf_map, placement_verilog_alternatives, metrics = process_placements(DB=DB, verilog_d=verilog_d,
                                                                                       lambda_coeff=lambda_coeff, scale_factor=scale_factor,
                                                                                       opath=opath)
