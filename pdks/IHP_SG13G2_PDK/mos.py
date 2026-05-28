@@ -487,7 +487,7 @@ class MOSGenerator(DefaultCanvas):
                         names_updated[names_mapping[i]] = names[i]
                         names_updated[names_mapping[i].lower()] = names[i]
                     reflect = row_pattern.islower()
-                    self._addMOS(x, y, x_cells, vt_type, names_updated[row_pattern],  False, **parameters)
+                    self._addMOS(x, y, x_cells, vt_type, names_updated[row_pattern],  reflect, **parameters)
                     if self.bodyswitch==1:self._addBodyContact(x, y, x_cells, y_cells - 1, names_updated[row_pattern])
                 elif pattern == 0: # None (single transistor)
                     # TODO: Not sure this works without dummies. Currently:
